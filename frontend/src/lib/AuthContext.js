@@ -30,8 +30,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async () => {
-    const firebaseUser = await signInWithGoogle();
-    await syncUser(firebaseUser);
+    try {
+      const firebaseUser = await signInWithGoogle();
+      if (firebaseUser) await syncUser(firebaseUser);
+    } catch (e) {
+      console.error("Login failed:", e);
+    }
   };
 
   const logout = () => logOut();

@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 
 // Replace with your Firebase project config
 // Get these values from: Firebase Console → Project Settings → Your Apps → Web App
@@ -17,8 +17,23 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(auth, googleProvider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (err) {
+    // If popup blocked, fall back to redirect
+    if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+    console.error("Sign-in error:", err.code, err.message);
+    throw err;
+  }
+}
+
+export async function handleRedirectResult() {
+  const result = await getRedirectResult(auth);
+  return result?.user || null;
 }
 
 export async function logOut() {
