@@ -67,6 +67,9 @@ export default function Dashboard() {
     );
   }
 
+  // Detect in-app browsers (Messenger, Instagram, Facebook, etc.)
+  const isInAppBrowser = typeof navigator !== "undefined" && /FBAN|FBAV|Instagram|Messenger|Line|Snapchat|Twitter|MicroMessenger/i.test(navigator.userAgent);
+
   if (!user) {
     return (
       <div className="container" style={{ textAlign: "center", marginTop: 160, position: "relative" }}>
@@ -111,9 +114,34 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <button className="btn-primary" onClick={login} style={{ fontSize: 15, padding: "14px 40px", borderRadius: 8 }}>
-          Sign in with Google
-        </button>
+        {isInAppBrowser ? (
+          <div style={{ maxWidth: 340, margin: "0 auto" }}>
+            <p style={{ color: "#f59f00", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+              Open in your browser to sign in
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
+              Google sign-in doesn't work inside app browsers. Tap the menu (
+              <span style={{ fontWeight: 700 }}>...</span> or
+              <span style={{ fontWeight: 700 }}> share</span>) and choose
+              <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Safari"</span> or
+              <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Chrome"</span>.
+            </p>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                // Try to force open in external browser
+                window.open(window.location.href, "_system");
+              }}
+              style={{ fontSize: 14, padding: "12px 32px", borderRadius: 8 }}
+            >
+              Try Opening in Browser
+            </button>
+          </div>
+        ) : (
+          <button className="btn-primary" onClick={login} style={{ fontSize: 15, padding: "14px 40px", borderRadius: 8 }}>
+            Sign in with Google
+          </button>
+        )}
 
         {activeUsers > 0 && (
           <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 24 }}>
