@@ -151,4 +151,33 @@ router.get("/rooms", async (_req, res) => {
   }
 });
 
+// DELETE /rooms/:id — Delete a room (creator only)
+router.delete("/rooms/:id", async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ error: "userId query param required" });
+    }
+
+    const db = await getDb();
+    const roomResult = db.exec("SELECT created_by FROM rooms WHERE id = ?", [req.params.id]);
+    if (roomResult.length === 0 || roomResult[0].values.length === 0) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    if (roomResult[0].values[0][0] !== userId) {
+      return res.status(403).json({ error: "Only the room creator can delete this room" });
+    }
+
+    db.run("DELETE FROM room_participants WHERE room_id = ?", [req.params.id]);
+    db.run("DELETE FROM rooms WHERE id = ?", [req.params.id]);
+    saveDb();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("delete room error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 module.exports = router;

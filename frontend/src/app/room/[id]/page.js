@@ -25,6 +25,8 @@ export default function RoomPage() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
   const [speaking, setSpeaking] = useState(false); // Local user speaking
+  const [messages, setMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
 
   // Refs to persist across renders without causing re-renders
   const peersRef = useRef({}); // { socketId: SimplePeer instance }
@@ -32,6 +34,7 @@ export default function RoomPage() {
   const socketRef = useRef(null);
   const analyserRef = useRef(null); // AudioContext analyser for speaking detection
   const animFrameRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   // Clean up all peer connections
   const cleanupPeers = useCallback(() => {
@@ -198,6 +201,7 @@ export default function RoomPage() {
           roomId,
           userId: user.uid,
           displayName: user.displayName || user.email,
+          photoURL: user.photoURL || null,
         });
       });
 
@@ -231,6 +235,10 @@ export default function RoomPage() {
         setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
       });
 
+      socket.on("chat-message", (msg) => {
+        setMessages((prev) => [...prev, msg]);
+      });
+
       setConnected(true);
     } catch (err) {
       console.error("Failed to join voice:", err);
@@ -256,6 +264,25 @@ export default function RoomPage() {
     cleanup();
     router.push("/");
   };
+
+  const sendChat = (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !socketRef.current) return;
+    const msg = {
+      sender: user.displayName || user.email,
+      photoURL: user.photoURL || null,
+      text: chatInput.trim(),
+      timestamp: Date.now(),
+    };
+    socketRef.current.emit("chat-message", { roomId, text: chatInput.trim() });
+    setMessages((prev) => [...prev, msg]);
+    setChatInput("");
+  };
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   if (loading) {
     return <div className="container" style={{ marginTop: 100, textAlign: "center" }}>Loading...</div>;
@@ -336,11 +363,48 @@ export default function RoomPage() {
               IN ROOM ({participants.length + 1})
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-              <ParticipantCard name={user.displayName || "You"} isSelf muted={muted} speaking={speaking && !muted} />
+              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} />
               {participants.map((p) => (
-                <ParticipantCard key={p.socketId} name={p.displayName} />
+                <ParticipantCard key={p.socketId} name={p.displayName} photoURL={p.photoURL} />
               ))}
             </div>
+          </div>
+
+          {/* Live Chat */}
+          <div className="card" style={{ marginTop: 16 }}>
+            <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
+              CHAT
+            </h2>
+            <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {messages.length === 0 && (
+                <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "16px 0" }}>No messages yet</p>
+              )}
+              {messages.map((msg, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  {msg.photoURL ? (
+                    <img src={msg.photoURL} alt="" style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                      {(msg.sender || "?")[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginRight: 6 }}>{msg.sender}</span>
+                    <span style={{ fontSize: 13, color: "var(--text)" }}>{msg.text}</span>
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <form onSubmit={sendChat} style={{ display: "flex", gap: 8 }}>
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Type a message..."
+                style={{ flex: 1 }}
+              />
+              <button className="btn-primary" type="submit" style={{ padding: "8px 16px", fontSize: 13 }}>Send</button>
+            </form>
           </div>
         </>
       )}
@@ -348,7 +412,7 @@ export default function RoomPage() {
   );
 }
 
-function ParticipantCard({ name, isSelf, muted, speaking }) {
+function ParticipantCard({ name, photoURL, isSelf, muted, speaking }) {
   const isActive = speaking && !muted;
   return (
     <div
@@ -365,29 +429,45 @@ function ParticipantCard({ name, isSelf, muted, speaking }) {
         transition: "all 0.2s",
       }}
     >
-      <div
-        style={{
-          width: 52,
-          height: 52,
-          borderRadius: "50%",
-          background: isActive
-            ? "linear-gradient(135deg, #2f9e44, #1a7a30)"
-            : isSelf
-            ? "linear-gradient(135deg, #3b5bdb, #2b4bc4)"
-            : "var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          margin: "0 auto 10px",
-          fontSize: 20,
-          fontWeight: 700,
-          color: "#fff",
-          animation: isActive ? "speakPulse 1.2s infinite" : "none",
-          transition: "background 0.2s",
-        }}
-      >
-        {(name || "?")[0].toUpperCase()}
-      </div>
+      {photoURL ? (
+        <img
+          src={photoURL}
+          alt=""
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            margin: "0 auto 10px",
+            display: "block",
+            border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
+            animation: isActive ? "speakPulse 1.2s infinite" : "none",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            background: isActive
+              ? "linear-gradient(135deg, #2f9e44, #1a7a30)"
+              : isSelf
+              ? "linear-gradient(135deg, #3b5bdb, #2b4bc4)"
+              : "var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 10px",
+            fontSize: 20,
+            fontWeight: 700,
+            color: "#fff",
+            animation: isActive ? "speakPulse 1.2s infinite" : "none",
+            transition: "background 0.2s",
+          }}
+        >
+          {(name || "?")[0].toUpperCase()}
+        </div>
+      )}
       <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>
         {name}
       </div>

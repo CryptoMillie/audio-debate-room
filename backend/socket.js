@@ -35,19 +35,20 @@ function setupSocket(io) {
      * We add them to the room's participant list and notify all
      * existing participants so they can initiate peer connections.
      */
-    socket.on("join-room", ({ roomId, userId, displayName }) => {
+    socket.on("join-room", ({ roomId, userId, displayName, photoURL }) => {
       socket.join(roomId);
 
       // Initialize room array if first user
       if (!rooms[roomId]) rooms[roomId] = [];
 
-      const user = { socketId: socket.id, userId, displayName };
+      const user = { socketId: socket.id, userId, displayName, photoURL };
       rooms[roomId].push(user);
 
       // Store room info on socket for cleanup on disconnect
       socket.roomId = roomId;
       socket.userId = userId;
       socket.displayName = displayName;
+      socket.photoURL = photoURL;
 
       // Tell the joining user about everyone already in the room
       // so they can create peer connections to each existing user
@@ -78,6 +79,20 @@ function setupSocket(io) {
      * Remove them from the room and notify remaining participants
      * so they can tear down the corresponding peer connection.
      */
+    /**
+     * "chat-message" — Relay text chat to everyone in the room.
+     * Ephemeral — not persisted to DB.
+     */
+    socket.on("chat-message", ({ roomId, text }) => {
+      if (!text || !text.trim()) return;
+      socket.to(roomId).emit("chat-message", {
+        sender: socket.displayName,
+        photoURL: socket.photoURL,
+        text: text.trim(),
+        timestamp: Date.now(),
+      });
+    });
+
     socket.on("disconnect", () => {
       const { roomId, userId, displayName } = socket;
       if (roomId && rooms[roomId]) {

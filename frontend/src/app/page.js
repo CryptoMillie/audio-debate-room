@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { createRoom, listRooms } from "@/lib/api";
+import { createRoom, listRooms, deleteRoom } from "@/lib/api";
 
 export default function Dashboard() {
   const { user, loading, login, logout } = useAuth();
@@ -55,11 +55,20 @@ export default function Dashboard() {
     router.push(`/room/${joinId.trim()}`);
   };
 
+  const handleDelete = async (roomId) => {
+    if (!confirm("Delete this room?")) return;
+    await deleteRoom(roomId, user.uid);
+    setRooms((prev) => prev.filter((r) => r.id !== roomId));
+  };
+
   return (
     <div className="container">
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, paddingTop: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {user.photoURL && (
+            <img src={user.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)" }} />
+          )}
           <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{user.displayName}</span>
           <button className="btn-outline" onClick={logout} style={{ padding: "6px 14px", fontSize: 12 }}>
             Sign out
@@ -128,8 +137,18 @@ export default function Dashboard() {
                     {room.creator_name || "Unknown"} · {room.participant_count} joined
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                  {room.id}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{room.id}</span>
+                  {room.created_by === user.uid && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(room.id); }}
+                      style={{ background: "transparent", border: "none", color: "var(--danger)", padding: "4px 8px", fontSize: 12, opacity: 0.6 }}
+                      onMouseOver={(e) => { e.currentTarget.style.opacity = "1"; }}
+                      onMouseOut={(e) => { e.currentTarget.style.opacity = "0.6"; }}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

@@ -45,3 +45,7 @@ export function joinRoom(roomId, userId) {
 export function listRooms() {
   return request("/rooms");
 }
+
+export function deleteRoom(roomId, userId) {
+  return request(`/rooms/${roomId}?userId=${userId}`, { method: "DELETE" });
+}
