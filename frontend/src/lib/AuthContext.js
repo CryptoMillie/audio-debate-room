@@ -18,14 +18,23 @@ export function AuthProvider({ children }) {
         try {
           await syncUser(firebaseUser);
           // Load custom avatar from backend if exists
-          const { avatar } = await getAvatar(firebaseUser.uid);
-          if (avatar) {
-            firebaseUser = { ...firebaseUser, photoURL: avatar };
-          }
+          const { avatar } = await getAvatar(firebaseUser.uid).catch(() => ({ avatar: null }));
+          const photoURL = avatar || firebaseUser.photoURL || null;
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL,
+          });
         } catch (e) {
           console.error("Failed to sync user:", e);
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+          });
         }
-        setUser(firebaseUser);
       } else {
         setUser(null);
       }

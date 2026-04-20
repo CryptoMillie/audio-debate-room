@@ -15,10 +15,18 @@ router.post("/auth/user", async (req, res) => {
     const db = await getDb();
 
     // Check if user exists
-    const existing = db.exec("SELECT id FROM users WHERE id = ?", [id]);
+    const existing = db.exec("SELECT id, photo_url FROM users WHERE id = ?", [id]);
     if (existing.length > 0 && existing[0].values.length > 0) {
-      db.run("UPDATE users SET email = ?, display_name = ?, photo_url = ? WHERE id = ?",
-        [email, displayName || null, photoURL || null, id]);
+      const currentPhoto = existing[0].values[0][1];
+      // Only update photo_url if no custom avatar (base64) is already stored
+      const hasCustomAvatar = currentPhoto && currentPhoto.startsWith("data:");
+      if (hasCustomAvatar) {
+        db.run("UPDATE users SET email = ?, display_name = ? WHERE id = ?",
+          [email, displayName || null, id]);
+      } else {
+        db.run("UPDATE users SET email = ?, display_name = ?, photo_url = ? WHERE id = ?",
+          [email, displayName || null, photoURL || null, id]);
+      }
     } else {
       db.run("INSERT INTO users (id, email, display_name, photo_url) VALUES (?, ?, ?, ?)",
         [id, email, displayName || null, photoURL || null]);
@@ -203,10 +211,12 @@ router.get("/users/:id/avatar", async (req, res) => {
     const db = await getDb();
     const result = db.exec("SELECT photo_url FROM users WHERE id = ?", [req.params.id]);
     if (result.length === 0 || result[0].values.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return res.json({ avatar: null });
     }
     const photoUrl = result[0].values[0][0];
-    res.json({ avatar: photoUrl });
+    // Only return base64 custom avatars, not Google URLs (those come from Firebase)
+    const avatar = (photoUrl && photoUrl.startsWith("data:")) ? photoUrl : null;
+    res.json({ avatar });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }
