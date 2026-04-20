@@ -1,0 +1,149 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #080a10;
+  --surface: #0f1218;
+  --surface-hover: #161b24;
+  --border: #1c2230;
+  --text: #c8cdd6;
+  --text-muted: #4a5168;
+  --primary: #3b5bdb;
+  --primary-hover: #4c6ef5;
+  --danger: #e03131;
+  --success: #2f9e44;
+  --accent-glow: rgba(59, 91, 219, 0.08);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Animated waveform background */
+.bg-waves {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bg-waves canvas {
+  width: 100%;
+  height: 100%;
+  opacity: 0.07;
+}
+
+/* Glass overlay for content */
+.glass {
+  background: rgba(8, 10, 16, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 0 20px rgba(59, 91, 219, 0.3);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid rgba(224, 49, 49, 0.3);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: rgba(224, 49, 49, 0.1);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.btn-outline:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+input {
+  background: rgba(15, 18, 24, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 91, 219, 0.15);
+}
+input::placeholder {
+  color: var(--text-muted);
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.card {
+  background: rgba(15, 18, 24, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  backdrop-filter: blur(10px);
+}
+
+/* Waveform keyframes for ambient animation */
+@keyframes waveShift {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  25% { transform: translateX(-5px) scaleY(1.1); }
+  50% { transform: translateX(0) scaleY(0.9); }
+  75% { transform: translateX(5px) scaleY(1.05); }
+}
+
+@keyframes subtleFloat {
+  0%, 100% { transform: translateY(0); opacity: 0.06; }
+  50% { transform: translateY(-8px); opacity: 0.1; }
+}
+
+@keyframes speakPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 158, 68, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(47, 158, 68, 0); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
