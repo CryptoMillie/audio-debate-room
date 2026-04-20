@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, signInWithGoogle, logOut } from "./firebase";
+import { auth, signInWithGoogle, logOut, updateUserProfile } from "./firebase";
 import { syncUser } from "./api";
 
 const AuthContext = createContext(null);
@@ -40,8 +40,14 @@ export function AuthProvider({ children }) {
 
   const logout = () => logOut();
 
+  const editProfile = async ({ displayName, photoURL }) => {
+    const updated = await updateUserProfile({ displayName, photoURL });
+    setUser({ ...updated }); // Force re-render with new profile
+    await syncUser(updated);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, editProfile }}>
       {children}
     </AuthContext.Provider>
   );

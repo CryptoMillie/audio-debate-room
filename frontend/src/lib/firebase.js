@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, updateProfile } from "firebase/auth";
 
 // Replace with your Firebase project config
 // Get these values from: Firebase Console → Project Settings → Your Apps → Web App
@@ -38,6 +38,13 @@ export async function handleRedirectResult() {
 
 export async function logOut() {
   await signOut(auth);
+}
+
+export async function updateUserProfile({ displayName, photoURL }) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error("Not signed in");
+  await updateProfile(currentUser, { displayName, photoURL });
+  return currentUser;
 }
 
 export { auth };

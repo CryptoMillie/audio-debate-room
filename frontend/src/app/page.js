@@ -6,10 +6,13 @@ import { useAuth } from "@/lib/AuthContext";
 import { createRoom, listRooms, deleteRoom } from "@/lib/api";
 
 export default function Dashboard() {
-  const { user, loading, login, logout } = useAuth();
+  const { user, loading, login, logout, editProfile } = useAuth();
   const [title, setTitle] = useState("");
   const [joinId, setJoinId] = useState("");
   const [rooms, setRooms] = useState([]);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhoto, setProfilePhoto] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -66,10 +69,21 @@ export default function Dashboard() {
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, paddingTop: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {user.photoURL && (
-            <img src={user.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)" }} />
-          )}
-          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{user.displayName}</span>
+          <div
+            onClick={() => { setProfileName(user.displayName || ""); setProfilePhoto(user.photoURL || ""); setShowProfile(true); }}
+            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 8px", borderRadius: 6, transition: "background 0.2s" }}
+            onMouseOver={(e) => { e.currentTarget.style.background = "var(--surface-hover)"; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)" }} />
+            ) : (
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>
+                {(user.displayName || "?")[0].toUpperCase()}
+              </div>
+            )}
+            <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{user.displayName}</span>
+          </div>
           <button className="btn-outline" onClick={logout} style={{ padding: "6px 14px", fontSize: 12 }}>
             Sign out
           </button>
@@ -155,6 +169,64 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Profile Edit Modal */}
+      {showProfile && (
+        <div
+          onClick={() => setShowProfile(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card"
+            style={{ width: 360, padding: 28 }}
+          >
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 20 }}>Edit Profile</h2>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, marginBottom: 20 }}>
+              {profilePhoto ? (
+                <img src={profilePhoto} alt="" style={{ width: 64, height: 64, borderRadius: "50%", border: "2px solid var(--primary)" }} />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "#fff" }}>
+                  {(profileName || "?")[0].toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Display Name</label>
+                <input
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="Your name"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Avatar URL</label>
+                <input
+                  value={profilePhoto}
+                  onChange={(e) => setProfilePhoto(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                className="btn-primary"
+                style={{ flex: 1 }}
+                onClick={async () => {
+                  await editProfile({ displayName: profileName.trim() || user.displayName, photoURL: profilePhoto.trim() || user.photoURL });
+                  setShowProfile(false);
+                }}
+              >
+                Save
+              </button>
+              <button className="btn-outline" onClick={() => setShowProfile(false)} style={{ flex: 1 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
