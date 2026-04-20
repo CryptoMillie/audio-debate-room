@@ -88,10 +88,10 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <h1 style={{ fontSize: 52, fontWeight: 800, letterSpacing: "-2px", marginBottom: 12, color: "#fff" }}>
+        <h1 style={{ fontSize: "clamp(36px, 10vw, 52px)", fontWeight: 800, letterSpacing: "-2px", marginBottom: 12, color: "#fff" }}>
           Backchannel
         </h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: 16, fontSize: 16, fontWeight: 500 }}>
+        <p style={{ color: "var(--text-muted)", marginBottom: 16, fontSize: "clamp(14px, 3.5vw, 16px)", fontWeight: 500 }}>
           Drop in. Speak up. No recordings.
         </p>
 
@@ -163,7 +163,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40, paddingTop: 8 }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
@@ -187,7 +187,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 24 }}>
         {/* Create Room */}
         <div className="card">
           <h2 style={{ fontSize: 14, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500 }}>Create a Room</h2>
@@ -286,8 +286,8 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{room.id}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <span className="hide-mobile" style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{room.id}</span>
                     {room.created_by === user.uid && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(room.id); }}
@@ -324,7 +324,7 @@ export default function Dashboard() {
           <div
             onClick={(e) => e.stopPropagation()}
             className="card"
-            style={{ width: 360, padding: 28 }}
+            style={{ width: "min(360px, calc(100vw - 48px))", padding: 24 }}
           >
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 20 }}>Edit Profile</h2>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>

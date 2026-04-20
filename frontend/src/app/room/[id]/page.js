@@ -335,9 +335,9 @@ export default function RoomPage() {
   return (
     <div className="container">
       {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, paddingTop: 8 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.05em" }}>BACKCHANNEL</span>
             {room?.vibe && VIBES[room.vibe] && (
               <span style={{
@@ -352,16 +352,16 @@ export default function RoomPage() {
               }}>{VIBES[room.vibe].label}</span>
             )}
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>{room?.title || "Loading..."}</h1>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+          <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", wordBreak: "break-word" }}>{room?.title || "Loading..."}</h1>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
             <code style={{ background: "rgba(22, 27, 36, 0.8)", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{roomId}</code>
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-outline" onClick={shareRoom} style={{ padding: "8px 16px", fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button className="btn-outline" onClick={shareRoom} style={{ padding: "8px 14px", fontSize: 12 }}>
             {copied ? "Copied" : "Share"}
           </button>
-          <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 20px", fontSize: 13 }}>
+          <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 14px", fontSize: 12 }}>
             Leave
           </button>
         </div>
@@ -369,7 +369,7 @@ export default function RoomPage() {
 
       {/* Join Voice / Controls */}
       {!connected ? (
-        <div className="card" style={{ textAlign: "center", padding: "60px 40px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
           <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.15 }}>
             <MicOnIcon size={48} />
           </div>
@@ -403,7 +403,7 @@ export default function RoomPage() {
             <h2 style={{ fontSize: 12, marginBottom: 20, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
               IN ROOM ({participants.length + 1})
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
               <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} />
               {participants.map((p) => (
                 <ParticipantCard key={p.socketId} name={p.displayName} photoURL={p.photoURL} isNew={justJoined.has(p.socketId)} />
@@ -416,7 +416,7 @@ export default function RoomPage() {
             <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
               CHAT
             </h2>
-            <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ maxHeight: "min(240px, 35vh)", overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {messages.length === 0 && (
                 <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "16px 0" }}>No messages yet</p>
               )}
@@ -459,8 +459,8 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
     <div
       style={{
         background: isActive ? "rgba(47, 158, 68, 0.06)" : "rgba(22, 27, 36, 0.5)",
-        borderRadius: 12,
-        padding: "20px 16px",
+        borderRadius: 10,
+        padding: "16px 10px",
         textAlign: "center",
         border: isActive
           ? "1px solid rgba(47, 158, 68, 0.3)"
@@ -476,10 +476,10 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
           src={photoURL}
           alt=""
           style={{
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             borderRadius: "50%",
-            margin: "0 auto 10px",
+            margin: "0 auto 8px",
             display: "block",
             border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
             animation: isActive ? "speakPulse 1.2s infinite" : "none",
@@ -488,8 +488,8 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
       ) : (
         <div
           style={{
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             borderRadius: "50%",
             background: isActive
               ? "linear-gradient(135deg, #2f9e44, #1a7a30)"
@@ -499,8 +499,8 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            margin: "0 auto 10px",
-            fontSize: 20,
+            margin: "0 auto 8px",
+            fontSize: 18,
             fontWeight: 700,
             color: "#fff",
             animation: isActive ? "speakPulse 1.2s infinite" : "none",
@@ -510,7 +510,7 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
           {(name || "?")[0].toUpperCase()}
         </div>
       )}
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}
       </div>
       {isSelf && (
