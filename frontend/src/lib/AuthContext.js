@@ -45,12 +45,10 @@ export function AuthProvider({ children }) {
 
   const logout = () => logOut();
 
-  const editProfile = async ({ displayName, photoURL }) => {
-    await updateUserProfile({ displayName, photoURL });
-    // Update local state directly (Firebase User getters don't spread well)
-    setUser((prev) => ({ ...prev, displayName, photoURL }));
-    // Sync the new name to backend DB
-    await syncUser({ uid: user.uid, email: user.email, displayName, photoURL });
+  const editProfile = async ({ displayName }) => {
+    await updateUserProfile({ displayName, photoURL: auth.currentUser?.photoURL });
+    setUser((prev) => ({ ...prev, displayName }));
+    await syncUser({ uid: user.uid, email: user.email, displayName, photoURL: auth.currentUser?.photoURL });
   };
 
   const changeAvatar = async (base64) => {

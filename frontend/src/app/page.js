@@ -252,7 +252,7 @@ export default function Dashboard() {
                 className="btn-primary"
                 style={{ flex: 1 }}
                 onClick={async () => {
-                  await editProfile({ displayName: profileName.trim() || user.displayName, photoURL: profilePhoto || user.photoURL });
+                  await editProfile({ displayName: profileName.trim() || user.displayName });
                   setShowProfile(false);
                 }}
               >
