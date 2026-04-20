@@ -119,7 +119,23 @@ export default function RoomPage() {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
-          // TURN server for users behind strict NATs
+          // Free TURN relays for users behind strict NATs
+          {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          // Custom TURN if configured
           ...(process.env.NEXT_PUBLIC_TURN_URL
             ? [{
                 urls: process.env.NEXT_PUBLIC_TURN_URL,
@@ -141,13 +157,22 @@ export default function RoomPage() {
       const existing = document.getElementById(`audio-${targetSocketId}`);
       if (existing) existing.remove();
       const audio = document.createElement("audio");
-      audio.srcObject = remoteStream;
-      audio.autoplay = true;
-      audio.playsInline = true;
-      audio.volume = 1.0;
       audio.id = `audio-${targetSocketId}`;
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "");
+      audio.setAttribute("controls", "false");
+      audio.volume = 1.0;
+      // Set srcObject after appending to DOM (fixes some mobile browsers)
       document.body.appendChild(audio);
-      audio.play().catch((e) => console.warn("Audio play blocked:", e));
+      audio.srcObject = remoteStream;
+      // Retry play with fallback
+      const tryPlay = () => {
+        audio.play().catch((e) => {
+          console.warn("Audio play blocked, retrying:", e);
+          setTimeout(tryPlay, 500);
+        });
+      };
+      tryPlay();
     });
 
     peer.on("connect", () => {
@@ -188,8 +213,20 @@ export default function RoomPage() {
     if (!user) return;
 
     try {
+      // Resume AudioContext on user gesture (required by iOS/mobile)
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") await ctx.resume();
+      ctx.close();
+
       // Step 1: Get user's microphone audio
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
       streamRef.current = stream;
 
       // Start speaking detection on local mic
