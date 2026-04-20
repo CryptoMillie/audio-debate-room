@@ -7,6 +7,15 @@ import { getRoom, joinRoom } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import SimplePeer from "simple-peer";
 
+const VIBES = {
+  chill: { color: "#6c5ce7", label: "CHILL" },
+  debate: { color: "#e03131", label: "DEBATE" },
+  truth: { color: "#f59f00", label: "TRUTH" },
+  sport: { color: "#2f9e44", label: "SPORT" },
+  music: { color: "#3b5bdb", label: "MUSIC" },
+  breaking: { color: "#ff6b35", label: "BREAKING" },
+};
+
 /**
  * Room Page — handles:
  * 1. Joining the room via REST API
@@ -27,6 +36,8 @@ export default function RoomPage() {
   const [speaking, setSpeaking] = useState(false); // Local user speaking
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
+  const [justJoined, setJustJoined] = useState(new Set());
+  const [copied, setCopied] = useState(false);
 
   // Refs to persist across renders without causing re-renders
   const peersRef = useRef({}); // { socketId: SimplePeer instance }
@@ -217,6 +228,11 @@ export default function RoomPage() {
         console.log(`New user connected: ${newUser.displayName} (${newUser.socketId})`);
         setParticipants((prev) => [...prev, newUser]);
         createPeer(newUser.socketId, false, stream);
+        // Join animation
+        setJustJoined((prev) => new Set([...prev, newUser.socketId]));
+        setTimeout(() => {
+          setJustJoined((prev) => { const next = new Set(prev); next.delete(newUser.socketId); return next; });
+        }, 1500);
       });
 
       socket.on("signal", ({ fromSocketId, signal }) => {
@@ -279,6 +295,12 @@ export default function RoomPage() {
     setChatInput("");
   };
 
+  const shareRoom = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -315,15 +337,34 @@ export default function RoomPage() {
       {/* Header */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, paddingTop: 8 }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, letterSpacing: "0.05em" }}>BACKCHANNEL</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.05em" }}>BACKCHANNEL</span>
+            {room?.vibe && VIBES[room.vibe] && (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 700,
+                padding: "2px 8px",
+                borderRadius: 4,
+                background: VIBES[room.vibe].color + "20",
+                color: VIBES[room.vibe].color,
+                letterSpacing: "0.05em",
+                animation: room.vibe === "breaking" ? "breakingPulse 2s infinite" : "none",
+              }}>{VIBES[room.vibe].label}</span>
+            )}
+          </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>{room?.title || "Loading..."}</h1>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             <code style={{ background: "rgba(22, 27, 36, 0.8)", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{roomId}</code>
           </p>
         </div>
-        <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 20px", fontSize: 13 }}>
-          Leave
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-outline" onClick={shareRoom} style={{ padding: "8px 16px", fontSize: 13 }}>
+            {copied ? "Copied" : "Share"}
+          </button>
+          <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 20px", fontSize: 13 }}>
+            Leave
+          </button>
+        </div>
       </header>
 
       {/* Join Voice / Controls */}
@@ -365,7 +406,7 @@ export default function RoomPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
               <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} />
               {participants.map((p) => (
-                <ParticipantCard key={p.socketId} name={p.displayName} photoURL={p.photoURL} />
+                <ParticipantCard key={p.socketId} name={p.displayName} photoURL={p.photoURL} isNew={justJoined.has(p.socketId)} />
               ))}
             </div>
           </div>
@@ -412,7 +453,7 @@ export default function RoomPage() {
   );
 }
 
-function ParticipantCard({ name, photoURL, isSelf, muted, speaking }) {
+function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
   const isActive = speaking && !muted;
   return (
     <div
@@ -427,6 +468,7 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking }) {
           ? "1px solid rgba(59, 91, 219, 0.2)"
           : "1px solid transparent",
         transition: "all 0.2s",
+        animation: isNew ? "joinPop 0.4s ease-out" : "none",
       }}
     >
       {photoURL ? (

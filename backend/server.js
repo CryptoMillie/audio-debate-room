@@ -3,7 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const routes = require("./routes");
-const { setupSocket } = require("./socket");
+const { setupSocket, getActiveUserCount } = require("./socket");
 const { getDb } = require("./db");
 
 const app = express();
@@ -31,6 +31,11 @@ app.use("/api", routes);
 // Health check
 app.get("/", (_req, res) => {
   res.json({ status: "Audio Debate Room server running" });
+});
+
+// Stats endpoint
+app.get("/api/stats", (_req, res) => {
+  res.json({ activeUsers: getActiveUserCount() });
 });
 
 // Initialize Socket.IO signaling

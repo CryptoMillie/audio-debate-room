@@ -35,17 +35,17 @@ router.post("/auth/user", async (req, res) => {
 // POST /create-room
 router.post("/create-room", async (req, res) => {
   try {
-    const { title, userId } = req.body;
+    const { title, userId, vibe } = req.body;
     if (!title || !userId) {
       return res.status(400).json({ error: "title and userId are required" });
     }
 
     const db = await getDb();
     const roomId = uuidv4().slice(0, 8);
-    db.run("INSERT INTO rooms (id, title, created_by) VALUES (?, ?, ?)", [roomId, title, userId]);
+    db.run("INSERT INTO rooms (id, title, created_by, vibe) VALUES (?, ?, ?, ?)", [roomId, title, userId, vibe || "chill"]);
     saveDb();
 
-    res.json({ roomId, title });
+    res.json({ roomId, title, vibe: vibe || "chill" });
   } catch (err) {
     console.error("create-room error:", err);
     res.status(500).json({ error: "Internal server error" });

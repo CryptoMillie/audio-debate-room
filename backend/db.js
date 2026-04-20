@@ -35,10 +35,14 @@ async function getDb() {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       created_by TEXT NOT NULL,
+      vibe TEXT DEFAULT 'chill',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (created_by) REFERENCES users(id)
     )
   `);
+
+  // Migrate: add vibe column if upgrading from old schema
+  try { db.run("ALTER TABLE rooms ADD COLUMN vibe TEXT DEFAULT 'chill'"); } catch(e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS room_participants (

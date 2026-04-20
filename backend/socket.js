@@ -116,4 +116,12 @@ function setupSocket(io) {
   });
 }
 
-module.exports = { setupSocket };
+function getActiveUserCount() {
+  let count = 0;
+  for (const roomId in rooms) {
+    count += rooms[roomId].length;
+  }
+  return count;
+}
+
+module.exports = { setupSocket, getActiveUserCount };

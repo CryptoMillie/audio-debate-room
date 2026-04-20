@@ -147,3 +147,19 @@ input::placeholder {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.6; }
 }
+
+@keyframes joinPop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes breakingPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 107, 53, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(255, 107, 53, 0.7); }
+}
+
+@keyframes eqBar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}

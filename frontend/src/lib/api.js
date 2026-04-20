@@ -24,11 +24,15 @@ export function syncUser(user) {
   });
 }
 
-export function createRoom(title, userId) {
+export function createRoom(title, userId, vibe) {
   return request("/create-room", {
     method: "POST",
-    body: JSON.stringify({ title, userId }),
+    body: JSON.stringify({ title, userId, vibe }),
   });
+}
+
+export function getStats() {
+  return request("/stats");
 }
 
 export function getRoom(roomId) {
