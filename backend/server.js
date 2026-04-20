@@ -54,8 +54,9 @@ app.get("/api/turn-credentials", async (_req, res) => {
     });
   }
   try {
+    const appName = process.env.METERED_APP_NAME || "backchannel";
     const response = await fetch(
-      `https://backchannel.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
+      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
     );
     const iceServers = await response.json();
     res.json({ iceServers });
