@@ -30,7 +30,11 @@ app.use("/api", routes);
 
 // Health check
 app.get("/", (_req, res) => {
-  res.json({ status: "Audio Debate Room server running" });
+  res.json({
+    status: "Audio Debate Room server running",
+    turnConfigured: !!process.env.METERED_API_KEY,
+    meteredApp: process.env.METERED_APP_NAME || "backchannel",
+  });
 });
 
 // Stats endpoint
@@ -42,7 +46,7 @@ app.get("/api/stats", (_req, res) => {
 app.get("/api/turn-credentials", async (_req, res) => {
   const apiKey = process.env.METERED_API_KEY;
   if (!apiKey) {
-    // No TURN configured — return STUN-only fallback
+    console.log("TURN: No METERED_API_KEY set, returning STUN-only");
     return res.json({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -55,13 +59,19 @@ app.get("/api/turn-credentials", async (_req, res) => {
   }
   try {
     const appName = process.env.METERED_APP_NAME || "backchannel";
-    const response = await fetch(
-      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
-    );
+    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`;
+    console.log("TURN: Fetching from", url.replace(apiKey, "***"));
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("TURN: Metered API error:", response.status, text);
+      throw new Error(`Metered API returned ${response.status}`);
+    }
     const iceServers = await response.json();
+    console.log("TURN: Got", iceServers.length, "ICE servers");
     res.json({ iceServers });
   } catch (err) {
-    console.error("Failed to fetch TURN credentials:", err);
+    console.error("TURN: Failed to fetch credentials:", err.message);
     res.json({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
