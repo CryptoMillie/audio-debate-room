@@ -38,6 +38,38 @@ app.get("/api/stats", (_req, res) => {
   res.json({ activeUsers: getActiveUserCount() });
 });
 
+// TURN credential endpoint — fetches temporary TURN credentials
+app.get("/api/turn-credentials", async (_req, res) => {
+  const apiKey = process.env.METERED_API_KEY;
+  if (!apiKey) {
+    // No TURN configured — return STUN-only fallback
+    return res.json({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" },
+      ],
+    });
+  }
+  try {
+    const response = await fetch(
+      `https://backchannel.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
+    );
+    const iceServers = await response.json();
+    res.json({ iceServers });
+  } catch (err) {
+    console.error("Failed to fetch TURN credentials:", err);
+    res.json({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
+    });
+  }
+});
+
 // Initialize Socket.IO signaling
 setupSocket(io);
 

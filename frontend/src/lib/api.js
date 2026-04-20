@@ -64,3 +64,7 @@ export function updateAvatar(userId, avatar) {
 export function getAvatar(userId) {
   return request(`/users/${userId}/avatar`);
 }
+
+export function getTurnCredentials() {
+  return request("/turn-credentials");
+}

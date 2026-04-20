@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { getRoom, joinRoom } from "@/lib/api";
+import { getRoom, joinRoom, getTurnCredentials } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import SimplePeer from "simple-peer";
 
@@ -16,13 +16,6 @@ const VIBES = {
   breaking: { color: "#ff6b35", label: "BREAKING" },
 };
 
-/**
- * Room Page — handles:
- * 1. Joining the room via REST API
- * 2. Connecting to Socket.IO for signaling
- * 3. Creating WebRTC peer connections for audio
- * 4. Speaking indicator via AudioContext analyser
- */
 export default function RoomPage() {
   const { id: roomId } = useParams();
   const router = useRouter();
@@ -33,29 +26,29 @@ export default function RoomPage() {
   const [muted, setMuted] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
-  const [speaking, setSpeaking] = useState(false); // Local user speaking
+  const [speaking, setSpeaking] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [justJoined, setJustJoined] = useState(new Set());
   const [copied, setCopied] = useState(false);
+  const [peerStatus, setPeerStatus] = useState({}); // { socketId: "connecting"|"connected"|"failed" }
 
-  // Refs to persist across renders without causing re-renders
-  const peersRef = useRef({}); // { socketId: SimplePeer instance }
-  const streamRef = useRef(null); // Local audio MediaStream
+  const peersRef = useRef({});
+  const streamRef = useRef(null);
   const socketRef = useRef(null);
-  const analyserRef = useRef(null); // AudioContext analyser for speaking detection
+  const analyserRef = useRef(null);
   const animFrameRef = useRef(null);
   const chatEndRef = useRef(null);
+  const iceServersRef = useRef(null);
 
-  // Clean up all peer connections
   const cleanupPeers = useCallback(() => {
     Object.values(peersRef.current).forEach((peer) => {
       if (peer && !peer.destroyed) peer.destroy();
     });
     peersRef.current = {};
+    setPeerStatus({});
   }, []);
 
-  // Clean up everything on unmount or leave
   const cleanup = useCallback(() => {
     cleanupPeers();
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -64,16 +57,14 @@ export default function RoomPage() {
       streamRef.current = null;
     }
     if (socketRef.current) {
+      // Remove all listeners before disconnecting
+      socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
     }
     setConnected(false);
     setSpeaking(false);
   }, [cleanupPeers]);
 
-  /**
-   * Start monitoring local mic volume for speaking indicator.
-   * Uses Web Audio API AnalyserNode to detect audio level.
-   */
   const startSpeakingDetection = useCallback((stream) => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -85,14 +76,11 @@ export default function RoomPage() {
       analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
       const checkLevel = () => {
         analyser.getByteFrequencyData(dataArray);
-        // Average volume level
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
         const avg = sum / dataArray.length;
-        // Threshold: avg > 15 means someone is talking
         setSpeaking(avg > 15);
         animFrameRef.current = requestAnimationFrame(checkLevel);
       };
@@ -102,93 +90,78 @@ export default function RoomPage() {
     }
   }, []);
 
-  /**
-   * Create a new WebRTC peer connection to another user.
-   */
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
-    // Prevent duplicate peers
     if (peersRef.current[targetSocketId]) return peersRef.current[targetSocketId];
 
-    console.log(`Creating peer to ${targetSocketId}, initiator=${initiator}`);
+    console.log(`[WebRTC] Creating peer to ${targetSocketId}, initiator=${initiator}`);
+    setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "connecting" }));
 
     const peer = new SimplePeer({
       initiator,
       stream,
       trickle: true,
       config: {
-        iceServers: [
+        iceServers: iceServersRef.current || [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
-          // Free TURN relays for users behind strict NATs
-          {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          // Custom TURN if configured
-          ...(process.env.NEXT_PUBLIC_TURN_URL
-            ? [{
-                urls: process.env.NEXT_PUBLIC_TURN_URL,
-                username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-                credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
-              }]
-            : []),
         ],
       },
     });
 
     peer.on("signal", (signal) => {
-      console.log(`Sending signal to ${targetSocketId}:`, signal.type || "candidate");
-      socketRef.current.emit("signal", { targetSocketId, signal });
+      console.log(`[WebRTC] Signal to ${targetSocketId}:`, signal.type || "candidate");
+      socketRef.current?.emit("signal", { targetSocketId, signal });
     });
 
     peer.on("stream", (remoteStream) => {
-      console.log(`Got remote stream from ${targetSocketId}`, remoteStream.getTracks());
+      console.log(`[WebRTC] Got stream from ${targetSocketId}`, remoteStream.getAudioTracks().length, "audio tracks");
       const existing = document.getElementById(`audio-${targetSocketId}`);
       if (existing) existing.remove();
+
       const audio = document.createElement("audio");
       audio.id = `audio-${targetSocketId}`;
-      audio.autoplay = true;
       audio.setAttribute("playsinline", "");
-      audio.setAttribute("controls", "false");
       audio.volume = 1.0;
-      // Set srcObject after appending to DOM (fixes some mobile browsers)
       document.body.appendChild(audio);
       audio.srcObject = remoteStream;
-      // Retry play with fallback
+
+      // Force play with retries
+      let retries = 0;
       const tryPlay = () => {
-        audio.play().catch((e) => {
-          console.warn("Audio play blocked, retrying:", e);
-          setTimeout(tryPlay, 500);
+        audio.play().then(() => {
+          console.log(`[WebRTC] Audio playing for ${targetSocketId}`);
+        }).catch((e) => {
+          console.warn(`[WebRTC] Play attempt ${retries + 1} failed:`, e.message);
+          if (retries < 10) {
+            retries++;
+            setTimeout(tryPlay, 300);
+          }
         });
       };
       tryPlay();
     });
 
     peer.on("connect", () => {
-      console.log(`Peer connected to ${targetSocketId}`);
+      console.log(`[WebRTC] CONNECTED to ${targetSocketId}`);
+      setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "connected" }));
     });
 
     peer.on("close", () => {
+      console.log(`[WebRTC] Peer closed: ${targetSocketId}`);
       const audioEl = document.getElementById(`audio-${targetSocketId}`);
       if (audioEl) audioEl.remove();
       delete peersRef.current[targetSocketId];
+      setPeerStatus((prev) => { const n = { ...prev }; delete n[targetSocketId]; return n; });
     });
 
     peer.on("error", (err) => {
-      console.error(`Peer error with ${targetSocketId}:`, err.message);
+      console.error(`[WebRTC] Peer error with ${targetSocketId}:`, err.message);
+      setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "failed" }));
       const audioEl = document.getElementById(`audio-${targetSocketId}`);
       if (audioEl) audioEl.remove();
+      if (peersRef.current[targetSocketId] && !peersRef.current[targetSocketId].destroyed) {
+        peersRef.current[targetSocketId].destroy();
+      }
       delete peersRef.current[targetSocketId];
     });
 
@@ -196,10 +169,9 @@ export default function RoomPage() {
     return peer;
   }, []);
 
-  // Fetch room info and join
+  // Fetch room info
   useEffect(() => {
     if (loading || !user) return;
-
     getRoom(roomId)
       .then((data) => {
         setRoom(data);
@@ -208,43 +180,49 @@ export default function RoomPage() {
       .catch((err) => setError(err.message));
   }, [roomId, user, loading]);
 
-  // Connect to voice room
   const joinVoice = useCallback(async () => {
     if (!user) return;
 
     try {
-      // Resume AudioContext on user gesture (required by iOS/mobile)
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      if (ctx.state === "suspended") await ctx.resume();
-      ctx.close();
+      // Resume AudioContext on user gesture (iOS)
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === "suspended") await ctx.resume();
+        ctx.close();
+      } catch (e) {}
 
-      // Step 1: Get user's microphone audio
+      // Fetch TURN credentials from backend
+      console.log("[WebRTC] Fetching ICE servers...");
+      try {
+        const { iceServers } = await getTurnCredentials();
+        iceServersRef.current = iceServers;
+        console.log("[WebRTC] Got ICE servers:", iceServers.length);
+      } catch (e) {
+        console.warn("[WebRTC] Could not fetch TURN credentials, using STUN only");
+        iceServersRef.current = [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ];
+      }
+
+      // Get mic
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: false,
       });
       streamRef.current = stream;
-
-      // Start speaking detection on local mic
       startSpeakingDetection(stream);
 
-      // Step 2: Connect to Socket.IO signaling server
+      // Socket setup — remove old listeners first
       const socket = getSocket();
       socketRef.current = socket;
+      socket.removeAllListeners();
 
-      if (socket.connected) {
-        socket.disconnect();
-      }
+      if (socket.connected) socket.disconnect();
       socket.connect();
 
       socket.on("connect", () => {
-        console.log("Socket connected:", socket.id);
-
-        // Step 3: Tell the server we're joining this room
+        console.log("[Socket] Connected:", socket.id);
         socket.emit("join-room", {
           roomId,
           userId: user.uid,
@@ -254,18 +232,15 @@ export default function RoomPage() {
       });
 
       socket.on("existing-users", (users) => {
-        console.log("Existing users in room:", users.length);
+        console.log("[Socket] Existing users:", users.length);
         setParticipants(users);
-        users.forEach((u) => {
-          createPeer(u.socketId, true, stream);
-        });
+        users.forEach((u) => createPeer(u.socketId, true, stream));
       });
 
       socket.on("user-connected", (newUser) => {
-        console.log(`New user connected: ${newUser.displayName} (${newUser.socketId})`);
+        console.log("[Socket] User connected:", newUser.displayName);
         setParticipants((prev) => [...prev, newUser]);
         createPeer(newUser.socketId, false, stream);
-        // Join animation
         setJustJoined((prev) => new Set([...prev, newUser.socketId]));
         setTimeout(() => {
           setJustJoined((prev) => { const next = new Set(prev); next.delete(newUser.socketId); return next; });
@@ -273,10 +248,13 @@ export default function RoomPage() {
       });
 
       socket.on("signal", ({ fromSocketId, signal }) => {
-        const peer = peersRef.current[fromSocketId];
-        if (peer && !peer.destroyed) {
-          peer.signal(signal);
+        let peer = peersRef.current[fromSocketId];
+        if (!peer || peer.destroyed) {
+          // Signal arrived before user-connected — create peer as responder
+          console.log("[Socket] Signal from unknown peer, creating responder:", fromSocketId);
+          peer = createPeer(fromSocketId, false, stream);
         }
+        peer.signal(signal);
       });
 
       socket.on("user-disconnected", ({ socketId }) => {
@@ -286,10 +264,15 @@ export default function RoomPage() {
         const audioEl = document.getElementById(`audio-${socketId}`);
         if (audioEl) audioEl.remove();
         setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
+        setPeerStatus((prev) => { const n = { ...prev }; delete n[socketId]; return n; });
       });
 
       socket.on("chat-message", (msg) => {
         setMessages((prev) => [...prev, msg]);
+      });
+
+      socket.on("disconnect", () => {
+        console.log("[Socket] Disconnected");
       });
 
       setConnected(true);
@@ -299,10 +282,8 @@ export default function RoomPage() {
     }
   }, [user, roomId, createPeer, startSpeakingDetection]);
 
-  // Cleanup on unmount
   useEffect(() => cleanup, [cleanup]);
 
-  // Toggle mute/unmute
   const toggleMute = () => {
     if (streamRef.current) {
       const audioTrack = streamRef.current.getAudioTracks()[0];
@@ -313,20 +294,12 @@ export default function RoomPage() {
     }
   };
 
-  const leaveRoom = () => {
-    cleanup();
-    router.push("/");
-  };
+  const leaveRoom = () => { cleanup(); router.push("/"); };
 
   const sendChat = (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !socketRef.current) return;
-    const msg = {
-      sender: user.displayName || user.email,
-      photoURL: user.photoURL || null,
-      text: chatInput.trim(),
-      timestamp: Date.now(),
-    };
+    const msg = { sender: user.displayName || user.email, photoURL: user.photoURL || null, text: chatInput.trim(), timestamp: Date.now() };
     socketRef.current.emit("chat-message", { roomId, text: chatInput.trim() });
     setMessages((prev) => [...prev, msg]);
     setChatInput("");
@@ -338,22 +311,15 @@ export default function RoomPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Auto-scroll chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  if (loading) {
-    return <div className="container" style={{ marginTop: 100, textAlign: "center" }}>Loading...</div>;
-  }
+  if (loading) return <div className="container" style={{ marginTop: 100, textAlign: "center" }}>Loading...</div>;
 
   if (!user) {
     return (
       <div className="container" style={{ marginTop: 100, textAlign: "center" }}>
         <p>Please sign in to join a room.</p>
-        <button className="btn-primary" onClick={() => router.push("/")} style={{ marginTop: 16 }}>
-          Go to Sign In
-        </button>
+        <button className="btn-primary" onClick={() => router.push("/")} style={{ marginTop: 16 }}>Go to Sign In</button>
       </div>
     );
   }
@@ -362,12 +328,14 @@ export default function RoomPage() {
     return (
       <div className="container" style={{ marginTop: 100, textAlign: "center" }}>
         <p style={{ color: "var(--danger)" }}>{error}</p>
-        <button className="btn-outline" onClick={() => router.push("/")} style={{ marginTop: 16 }}>
-          Back to Dashboard
-        </button>
+        <button className="btn-outline" onClick={() => router.push("/")} style={{ marginTop: 16 }}>Back to Dashboard</button>
       </div>
     );
   }
+
+  // Connection status summary
+  const connectedPeers = Object.values(peerStatus).filter((s) => s === "connected").length;
+  const failedPeers = Object.values(peerStatus).filter((s) => s === "failed").length;
 
   return (
     <div className="container">
@@ -378,19 +346,15 @@ export default function RoomPage() {
             <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.05em" }}>BACKCHANNEL</span>
             {room?.vibe && VIBES[room.vibe] && (
               <span style={{
-                fontSize: 9,
-                fontWeight: 700,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: VIBES[room.vibe].color + "20",
-                color: VIBES[room.vibe].color,
+                fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                background: VIBES[room.vibe].color + "20", color: VIBES[room.vibe].color,
                 letterSpacing: "0.05em",
                 animation: room.vibe === "breaking" ? "breakingPulse 2s infinite" : "none",
               }}>{VIBES[room.vibe].label}</span>
             )}
           </div>
           <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", wordBreak: "break-word" }}>{room?.title || "Loading..."}</h1>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             <code style={{ background: "rgba(22, 27, 36, 0.8)", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{roomId}</code>
           </p>
         </div>
@@ -398,41 +362,46 @@ export default function RoomPage() {
           <button className="btn-outline" onClick={shareRoom} style={{ padding: "8px 14px", fontSize: 12 }}>
             {copied ? "Copied" : "Share"}
           </button>
-          <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 14px", fontSize: 12 }}>
-            Leave
-          </button>
+          <button className="btn-danger" onClick={leaveRoom} style={{ padding: "8px 14px", fontSize: 12 }}>Leave</button>
         </div>
       </header>
 
-      {/* Join Voice / Controls */}
       {!connected ? (
         <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-          <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.15 }}>
-            <MicOnIcon size={48} />
-          </div>
-          <p style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 14 }}>
-            Ready to join?
-          </p>
+          <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.15 }}><MicOnIcon size={48} /></div>
+          <p style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 14 }}>Ready to join?</p>
           <button className="btn-primary" onClick={joinVoice} style={{ fontSize: 15, padding: "14px 40px", borderRadius: 8 }}>
             Join Voice
           </button>
         </div>
       ) : (
         <>
-          {/* Audio Controls */}
-          <div className="card" style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 16, padding: "16px" }}>
+          {/* Audio Controls + Connection Status */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 16, padding: "16px" }}>
             <button
               onClick={toggleMute}
               style={{
                 display: "flex", alignItems: "center", gap: 8, padding: "12px 28px",
                 background: muted ? "transparent" : "var(--primary)",
                 border: muted ? "1px solid rgba(224, 49, 49, 0.3)" : "none",
-                color: muted ? "var(--danger)" : "#fff",
-                borderRadius: 8,
+                color: muted ? "var(--danger)" : "#fff", borderRadius: 8,
               }}
             >
               {muted ? <><MicOffIcon /> Unmute</> : <><MicOnIcon /> Mute</>}
             </button>
+            {participants.length > 0 && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {connectedPeers > 0 && (
+                  <span style={{ color: "var(--success)" }}>{connectedPeers} connected</span>
+                )}
+                {failedPeers > 0 && (
+                  <span style={{ color: "var(--danger)", marginLeft: connectedPeers > 0 ? 8 : 0 }}>{failedPeers} failed</span>
+                )}
+                {connectedPeers === 0 && failedPeers === 0 && (
+                  <span>Connecting...</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Participants */}
@@ -443,16 +412,20 @@ export default function RoomPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
               <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} />
               {participants.map((p) => (
-                <ParticipantCard key={p.socketId} name={p.displayName} photoURL={p.photoURL} isNew={justJoined.has(p.socketId)} />
+                <ParticipantCard
+                  key={p.socketId}
+                  name={p.displayName}
+                  photoURL={p.photoURL}
+                  isNew={justJoined.has(p.socketId)}
+                  connectionStatus={peerStatus[p.socketId]}
+                />
               ))}
             </div>
           </div>
 
           {/* Live Chat */}
           <div className="card" style={{ marginTop: 16 }}>
-            <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
-              CHAT
-            </h2>
+            <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>CHAT</h2>
             <div style={{ maxHeight: "min(240px, 35vh)", overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {messages.length === 0 && (
                 <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "16px 0" }}>No messages yet</p>
@@ -475,12 +448,7 @@ export default function RoomPage() {
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={sendChat} style={{ display: "flex", gap: 8 }}>
-              <input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Type a message..."
-                style={{ flex: 1 }}
-              />
+              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a message..." style={{ flex: 1 }} />
               <button className="btn-primary" type="submit" style={{ padding: "8px 16px", fontSize: 13 }}>Send</button>
             </form>
           </div>
@@ -490,74 +458,46 @@ export default function RoomPage() {
   );
 }
 
-function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew }) {
+function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew, connectionStatus }) {
   const isActive = speaking && !muted;
   return (
     <div
       style={{
         background: isActive ? "rgba(47, 158, 68, 0.06)" : "rgba(22, 27, 36, 0.5)",
-        borderRadius: 10,
-        padding: "16px 10px",
-        textAlign: "center",
-        border: isActive
-          ? "1px solid rgba(47, 158, 68, 0.3)"
-          : isSelf
-          ? "1px solid rgba(59, 91, 219, 0.2)"
-          : "1px solid transparent",
+        borderRadius: 10, padding: "16px 10px", textAlign: "center",
+        border: isActive ? "1px solid rgba(47, 158, 68, 0.3)" : isSelf ? "1px solid rgba(59, 91, 219, 0.2)" : "1px solid transparent",
         transition: "all 0.2s",
         animation: isNew ? "joinPop 0.4s ease-out" : "none",
       }}
     >
       {photoURL ? (
-        <img
-          src={photoURL}
-          alt=""
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            margin: "0 auto 8px",
-            display: "block",
-            border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
-            animation: isActive ? "speakPulse 1.2s infinite" : "none",
-          }}
-        />
+        <img src={photoURL} alt="" style={{
+          width: 44, height: 44, borderRadius: "50%", margin: "0 auto 8px", display: "block",
+          border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
+          animation: isActive ? "speakPulse 1.2s infinite" : "none",
+        }} />
       ) : (
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            background: isActive
-              ? "linear-gradient(135deg, #2f9e44, #1a7a30)"
-              : isSelf
-              ? "linear-gradient(135deg, #3b5bdb, #2b4bc4)"
-              : "var(--border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            margin: "0 auto 8px",
-            fontSize: 18,
-            fontWeight: 700,
-            color: "#fff",
-            animation: isActive ? "speakPulse 1.2s infinite" : "none",
-            transition: "background 0.2s",
-          }}
-        >
+        <div style={{
+          width: 44, height: 44, borderRadius: "50%",
+          background: isActive ? "linear-gradient(135deg, #2f9e44, #1a7a30)" : isSelf ? "linear-gradient(135deg, #3b5bdb, #2b4bc4)" : "var(--border)",
+          display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px",
+          fontSize: 18, fontWeight: 700, color: "#fff",
+          animation: isActive ? "speakPulse 1.2s infinite" : "none", transition: "background 0.2s",
+        }}>
           {(name || "?")[0].toUpperCase()}
         </div>
       )}
       <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}
       </div>
-      {isSelf && (
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>You</div>
+      {isSelf && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>You</div>}
+      {isSelf && muted && <div style={{ fontSize: 10, color: "var(--danger)", marginTop: 4 }}>Muted</div>}
+      {isActive && <div style={{ fontSize: 10, color: "var(--success)", marginTop: 4, animation: "glowPulse 1.5s infinite" }}>Speaking</div>}
+      {!isSelf && connectionStatus === "connecting" && (
+        <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>Connecting...</div>
       )}
-      {isSelf && muted && (
-        <div style={{ fontSize: 10, color: "var(--danger)", marginTop: 4 }}>Muted</div>
-      )}
-      {isActive && (
-        <div style={{ fontSize: 10, color: "var(--success)", marginTop: 4, animation: "glowPulse 1.5s infinite" }}>Speaking</div>
+      {!isSelf && connectionStatus === "failed" && (
+        <div style={{ fontSize: 9, color: "var(--danger)", marginTop: 4 }}>No connection</div>
       )}
     </div>
   );
