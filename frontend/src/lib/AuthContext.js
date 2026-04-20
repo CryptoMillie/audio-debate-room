@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, signInWithGoogle, logOut, updateUserProfile, uploadAvatar } from "./firebase";
-import { syncUser } from "./api";
+import { auth, signInWithGoogle, logOut, updateUserProfile } from "./firebase";
+import { syncUser, updateAvatar, getAvatar } from "./api";
 
 const AuthContext = createContext(null);
 
@@ -14,13 +14,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser(firebaseUser);
         // Sync user to our backend database
         try {
           await syncUser(firebaseUser);
+          // Load custom avatar from backend if exists
+          const { avatar } = await getAvatar(firebaseUser.uid);
+          if (avatar) {
+            firebaseUser = { ...firebaseUser, photoURL: avatar };
+          }
         } catch (e) {
           console.error("Failed to sync user:", e);
         }
+        setUser(firebaseUser);
       } else {
         setUser(null);
       }
@@ -46,12 +51,10 @@ export function AuthProvider({ children }) {
     await syncUser(updated);
   };
 
-  const changeAvatar = async (file) => {
-    const url = await uploadAvatar(file);
-    await updateUserProfile({ displayName: user.displayName, photoURL: url });
-    setUser({ ...auth.currentUser });
-    await syncUser(auth.currentUser);
-    return url;
+  const changeAvatar = async (base64) => {
+    await updateAvatar(user.uid, base64);
+    // Update local user object with new photo
+    setUser((prev) => ({ ...prev, photoURL: base64 }));
   };
 
   return (

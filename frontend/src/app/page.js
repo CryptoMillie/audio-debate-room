@@ -5,6 +5,29 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import { createRoom, listRooms, deleteRoom } from "@/lib/api";
 
+function resizeImage(file, size) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        // Crop to square from center
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2;
+        const sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Dashboard() {
   const { user, loading, login, logout, editProfile, changeAvatar } = useAuth();
   const [title, setTitle] = useState("");
@@ -203,11 +226,11 @@ export default function Dashboard() {
                     if (!file) return;
                     setUploading(true);
                     try {
-                      const url = await changeAvatar(file);
-                      setProfilePhoto(url);
+                      const base64 = await resizeImage(file, 96);
+                      await changeAvatar(base64);
+                      setProfilePhoto(base64);
                     } catch (err) {
                       console.error("Upload failed:", err);
-                      alert("Upload failed. Make sure Firebase Storage is enabled.");
                     }
                     setUploading(false);
                   }}

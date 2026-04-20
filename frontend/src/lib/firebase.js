@@ -47,14 +47,4 @@ export async function updateUserProfile({ displayName, photoURL }) {
   return currentUser;
 }
 
-export async function uploadAvatar(file) {
-  const { getStorage, ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
-  const storage = getStorage(app);
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error("Not signed in");
-  const storageRef = ref(storage, `avatars/${currentUser.uid}`);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
-}
-
 export { auth };

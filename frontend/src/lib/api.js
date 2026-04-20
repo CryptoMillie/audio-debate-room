@@ -49,3 +49,14 @@ export function listRooms() {
 export function deleteRoom(roomId, userId) {
   return request(`/rooms/${roomId}?userId=${userId}`, { method: "DELETE" });
 }
+
+export function updateAvatar(userId, avatar) {
+  return request(`/users/${userId}/avatar`, {
+    method: "PUT",
+    body: JSON.stringify({ avatar }),
+  });
+}
+
+export function getAvatar(userId) {
+  return request(`/users/${userId}/avatar`);
+}

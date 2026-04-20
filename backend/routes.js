@@ -180,4 +180,36 @@ router.delete("/rooms/:id", async (req, res) => {
   }
 });
 
+// PUT /users/:id/avatar — Update user avatar (base64)
+router.put("/users/:id/avatar", async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    if (!avatar) return res.status(400).json({ error: "avatar is required" });
+
+    const db = await getDb();
+    db.run("UPDATE users SET photo_url = ? WHERE id = ?", [avatar, req.params.id]);
+    saveDb();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("update avatar error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /users/:id/avatar — Get user avatar
+router.get("/users/:id/avatar", async (req, res) => {
+  try {
+    const db = await getDb();
+    const result = db.exec("SELECT photo_url FROM users WHERE id = ?", [req.params.id]);
+    if (result.length === 0 || result[0].values.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const photoUrl = result[0].values[0][0];
+    res.json({ avatar: photoUrl });
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 module.exports = router;
