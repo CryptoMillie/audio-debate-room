@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, signInWithGoogle, logOut, updateUserProfile } from "./firebase";
+import { auth, signInWithGoogle, logOut, updateUserProfile, uploadAvatar } from "./firebase";
 import { syncUser } from "./api";
 
 const AuthContext = createContext(null);
@@ -46,8 +46,16 @@ export function AuthProvider({ children }) {
     await syncUser(updated);
   };
 
+  const changeAvatar = async (file) => {
+    const url = await uploadAvatar(file);
+    await updateUserProfile({ displayName: user.displayName, photoURL: url });
+    setUser({ ...auth.currentUser });
+    await syncUser(auth.currentUser);
+    return url;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, editProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, editProfile, changeAvatar }}>
       {children}
     </AuthContext.Provider>
   );

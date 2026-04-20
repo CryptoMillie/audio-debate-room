@@ -6,13 +6,14 @@ import { useAuth } from "@/lib/AuthContext";
 import { createRoom, listRooms, deleteRoom } from "@/lib/api";
 
 export default function Dashboard() {
-  const { user, loading, login, logout, editProfile } = useAuth();
+  const { user, loading, login, logout, editProfile, changeAvatar } = useAuth();
   const [title, setTitle] = useState("");
   const [joinId, setJoinId] = useState("");
   const [rooms, setRooms] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profilePhoto, setProfilePhoto] = useState("");
+  const [uploading, setUploading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -182,14 +183,36 @@ export default function Dashboard() {
             style={{ width: 360, padding: 28 }}
           >
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 20 }}>Edit Profile</h2>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, marginBottom: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
               {profilePhoto ? (
-                <img src={profilePhoto} alt="" style={{ width: 64, height: 64, borderRadius: "50%", border: "2px solid var(--primary)" }} />
+                <img src={profilePhoto} alt="" style={{ width: 72, height: 72, borderRadius: "50%", border: "2px solid var(--primary)" }} />
               ) : (
-                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "#fff" }}>
+                <div style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700, color: "#fff" }}>
                   {(profileName || "?")[0].toUpperCase()}
                 </div>
               )}
+              <label style={{ cursor: "pointer", fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>
+                {uploading ? "Uploading..." : "Change Photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  disabled={uploading}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploading(true);
+                    try {
+                      const url = await changeAvatar(file);
+                      setProfilePhoto(url);
+                    } catch (err) {
+                      console.error("Upload failed:", err);
+                      alert("Upload failed. Make sure Firebase Storage is enabled.");
+                    }
+                    setUploading(false);
+                  }}
+                />
+              </label>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
@@ -200,21 +223,13 @@ export default function Dashboard() {
                   placeholder="Your name"
                 />
               </div>
-              <div>
-                <label style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Avatar URL</label>
-                <input
-                  value={profilePhoto}
-                  onChange={(e) => setProfilePhoto(e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                />
-              </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button
                 className="btn-primary"
                 style={{ flex: 1 }}
                 onClick={async () => {
-                  await editProfile({ displayName: profileName.trim() || user.displayName, photoURL: profilePhoto.trim() || user.photoURL });
+                  await editProfile({ displayName: profileName.trim() || user.displayName, photoURL: profilePhoto || user.photoURL });
                   setShowProfile(false);
                 }}
               >
