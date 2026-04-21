@@ -23,8 +23,16 @@
  * directly between browsers via WebRTC.
  */
 
+const { handleFactCheck } = require("./services/factcheck");
+
 // Track which users are in which rooms: { roomId: [{ socketId, userId, displayName }] }
 const rooms = {};
+
+// Track banned users per room: { roomId: Set<userId> }
+const bannedUsers = {};
+
+// Track room creators: { roomId: userId }
+const roomCreators = {};
 
 function setupSocket(io) {
   io.on("connection", (socket) => {
@@ -35,11 +43,22 @@ function setupSocket(io) {
      * We add them to the room's participant list and notify all
      * existing participants so they can initiate peer connections.
      */
-    socket.on("join-room", ({ roomId, userId, displayName, photoURL }) => {
+    socket.on("join-room", ({ roomId, userId, displayName, photoURL, createdBy }) => {
+      // Check if user is banned from this room
+      if (bannedUsers[roomId] && bannedUsers[roomId].has(userId)) {
+        socket.emit("join-denied", { reason: "banned" });
+        return;
+      }
+
       socket.join(roomId);
 
       // Initialize room array if first user
       if (!rooms[roomId]) rooms[roomId] = [];
+
+      // Track room creator (first one to pass createdBy, or first joiner)
+      if (createdBy && !roomCreators[roomId]) {
+        roomCreators[roomId] = createdBy;
+      }
 
       const user = { socketId: socket.id, userId, displayName, photoURL };
       rooms[roomId].push(user);
@@ -62,6 +81,58 @@ function setupSocket(io) {
     });
 
     /**
+     * "kick-user" — Room creator kicks a user from the room.
+     */
+    socket.on("kick-user", ({ roomId, targetUserId }) => {
+      // Verify sender is the room creator
+      if (roomCreators[roomId] !== socket.userId) return;
+
+      // Add to banned list
+      if (!bannedUsers[roomId]) bannedUsers[roomId] = new Set();
+      bannedUsers[roomId].add(targetUserId);
+
+      // Find target socket(s) in the room
+      const roomUsers = rooms[roomId] || [];
+      const targetUser = roomUsers.find((u) => u.userId === targetUserId);
+      if (!targetUser) return;
+
+      // Emit kicked event to the target
+      io.to(targetUser.socketId).emit("kicked");
+
+      // Remove target from room
+      rooms[roomId] = roomUsers.filter((u) => u.userId !== targetUserId);
+
+      // Notify remaining users
+      socket.to(roomId).emit("user-disconnected", {
+        socketId: targetUser.socketId,
+        userId: targetUser.userId,
+        displayName: targetUser.displayName,
+      });
+
+      // Force the target socket to leave the room
+      const targetSocket = io.sockets.sockets.get(targetUser.socketId);
+      if (targetSocket) {
+        targetSocket.leave(roomId);
+        targetSocket.roomId = null;
+      }
+
+      console.log(`${targetUser.displayName} was kicked from room ${roomId} by creator`);
+    });
+
+    /**
+     * "reaction" — Send emoji reaction to a participant.
+     */
+    socket.on("reaction", ({ roomId, targetUserId, type }) => {
+      if (type !== "fire" && type !== "cook") return;
+      io.to(roomId).emit("reaction", {
+        fromUser: socket.userId,
+        targetUserId,
+        type,
+        timestamp: Date.now(),
+      });
+    });
+
+    /**
      * "signal" — Relay WebRTC signaling data between two peers.
      * This carries SDP offers/answers and ICE candidates.
      * The server does NOT inspect or modify this data — it just
@@ -75,24 +146,36 @@ function setupSocket(io) {
     });
 
     /**
+     * "chat-message" — Relay text chat to everyone in the room.
+     * Ephemeral — not persisted to DB.
+     * Also handles /fact command for AI fact-checking.
+     */
+    socket.on("chat-message", async ({ roomId, text }) => {
+      if (!text || !text.trim()) return;
+      const trimmed = text.trim();
+
+      // Broadcast the original message to others
+      socket.to(roomId).emit("chat-message", {
+        sender: socket.displayName,
+        photoURL: socket.photoURL,
+        text: trimmed,
+        timestamp: Date.now(),
+      });
+
+      // Handle /fact command
+      if (trimmed.startsWith("/fact ")) {
+        const query = trimmed.slice(6).trim();
+        const result = await handleFactCheck(socket.userId, roomId, query);
+        // Emit AI response to entire room (including sender)
+        io.to(roomId).emit("ai-response", result);
+      }
+    });
+
+    /**
      * "disconnect" — Clean up when a user leaves.
      * Remove them from the room and notify remaining participants
      * so they can tear down the corresponding peer connection.
      */
-    /**
-     * "chat-message" — Relay text chat to everyone in the room.
-     * Ephemeral — not persisted to DB.
-     */
-    socket.on("chat-message", ({ roomId, text }) => {
-      if (!text || !text.trim()) return;
-      socket.to(roomId).emit("chat-message", {
-        sender: socket.displayName,
-        photoURL: socket.photoURL,
-        text: text.trim(),
-        timestamp: Date.now(),
-      });
-    });
-
     socket.on("disconnect", () => {
       const { roomId, userId, displayName } = socket;
       if (roomId && rooms[roomId]) {

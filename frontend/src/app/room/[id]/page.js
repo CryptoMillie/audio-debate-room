@@ -32,6 +32,7 @@ export default function RoomPage() {
   const [justJoined, setJustJoined] = useState(new Set());
   const [copied, setCopied] = useState(false);
   const [peerStatus, setPeerStatus] = useState({}); // { socketId: "connecting"|"connected"|"failed" }
+  const [reactions, setReactions] = useState([]); // [{ id, targetUserId, type, timestamp }]
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
@@ -236,6 +237,7 @@ export default function RoomPage() {
           userId: user.uid,
           displayName: user.displayName || user.email,
           photoURL: user.photoURL || null,
+          createdBy: room?.created_by || null,
         });
       });
 
@@ -279,6 +281,42 @@ export default function RoomPage() {
         setMessages((prev) => [...prev, msg]);
       });
 
+      // Kick/ban listeners
+      socket.on("kicked", () => {
+        cleanup();
+        alert("You were removed from this room.");
+        router.push("/");
+      });
+
+      socket.on("join-denied", ({ reason }) => {
+        if (reason === "banned") {
+          setError("You have been banned from this room.");
+        } else {
+          setError("Unable to join room.");
+        }
+      });
+
+      // Reaction listener
+      socket.on("reaction", ({ targetUserId, type, timestamp }) => {
+        const id = `${targetUserId}-${type}-${timestamp}`;
+        setReactions((prev) => [...prev, { id, targetUserId, type, timestamp }]);
+        setTimeout(() => {
+          setReactions((prev) => prev.filter((r) => r.id !== id));
+        }, 2000);
+      });
+
+      // AI fact-check response listener
+      socket.on("ai-response", (result) => {
+        setMessages((prev) => [...prev, {
+          sender: "BACKCHANNEL AI",
+          isAI: true,
+          text: result.text,
+          originalQuery: result.originalQuery,
+          type: result.type,
+          timestamp: Date.now(),
+        }]);
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`Socket disconnected: ${reason}`);
       });
@@ -288,7 +326,7 @@ export default function RoomPage() {
       console.error("Failed to join voice:", err);
       setError("Could not access microphone. Please allow mic access and try again.");
     }
-  }, [user, roomId, createPeer, startSpeakingDetection]);
+  }, [user, roomId, room, createPeer, startSpeakingDetection, cleanup, router]);
 
   useEffect(() => cleanup, [cleanup]);
 
@@ -318,6 +356,18 @@ export default function RoomPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const kickUser = (targetUserId) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("kick-user", { roomId, targetUserId });
+  };
+
+  const sendReaction = (targetUserId, type) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("reaction", { roomId, targetUserId, type });
+  };
+
+  const isCreator = room?.created_by === user?.uid;
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -424,8 +474,13 @@ export default function RoomPage() {
                   key={p.socketId}
                   name={p.displayName}
                   photoURL={p.photoURL}
+                  userId={p.userId}
                   isNew={justJoined.has(p.socketId)}
                   connectionStatus={peerStatus[p.socketId]}
+                  isCreator={isCreator}
+                  onKick={() => kickUser(p.userId)}
+                  onReaction={(type) => sendReaction(p.userId, type)}
+                  reactions={reactions.filter((r) => r.targetUserId === p.userId)}
                 />
               ))}
             </div>
@@ -439,24 +494,51 @@ export default function RoomPage() {
                 <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "16px 0" }}>No messages yet</p>
               )}
               {messages.map((msg, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  {msg.photoURL ? (
+                <div key={i} className={msg.isAI ? "ai-message" : ""} style={{
+                  display: "flex", gap: 8, alignItems: "flex-start",
+                  ...(msg.isAI ? {
+                    background: "rgba(99, 102, 241, 0.08)",
+                    border: "1px solid rgba(99, 102, 241, 0.2)",
+                    borderRadius: 8, padding: "10px 12px",
+                  } : {}),
+                }}>
+                  {msg.isAI ? (
+                    <div style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>🧠</div>
+                  ) : msg.photoURL ? (
                     <img src={msg.photoURL} alt="" style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0 }} />
                   ) : (
                     <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
                       {(msg.sender || "?")[0].toUpperCase()}
                     </div>
                   )}
-                  <div>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginRight: 6 }}>{msg.sender}</span>
-                    <span style={{ fontSize: 13, color: "var(--text)" }}>{msg.text}</span>
+                  <div style={{ minWidth: 0 }}>
+                    {msg.isAI ? (
+                      <>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(139, 92, 246, 0.9)", letterSpacing: "0.05em" }}>BACKCHANNEL AI</span>
+                        {msg.originalQuery && (
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, fontStyle: "italic" }}>
+                            Re: &quot;{msg.originalQuery}&quot;
+                          </div>
+                        )}
+                        <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4, lineHeight: 1.5 }}>
+                          {msg.type === "error" ? (
+                            <span style={{ color: "var(--danger)" }}>{msg.text}</span>
+                          ) : msg.text}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginRight: 6 }}>{msg.sender}</span>
+                        <span style={{ fontSize: 13, color: "var(--text)" }}>{msg.text}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={sendChat} style={{ display: "flex", gap: 8 }}>
-              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a message..." style={{ flex: 1 }} />
+              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a message... (/fact to fact-check)" style={{ flex: 1 }} />
               <button className="btn-primary" type="submit" style={{ padding: "8px 16px", fontSize: 13 }}>Send</button>
             </form>
           </div>
@@ -467,7 +549,7 @@ export default function RoomPage() {
   );
 }
 
-function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew, connectionStatus }) {
+function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [] }) {
   const isActive = speaking && !muted;
   return (
     <div
@@ -477,8 +559,17 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew, conne
         border: isActive ? "1px solid rgba(47, 158, 68, 0.3)" : isSelf ? "1px solid rgba(59, 91, 219, 0.2)" : "1px solid transparent",
         transition: "all 0.2s",
         animation: isNew ? "joinPop 0.4s ease-out" : "none",
+        position: "relative",
+        overflow: "visible",
       }}
     >
+      {/* Floating reaction emojis */}
+      {reactions.map((r) => (
+        <div key={r.id} className="reaction-float" style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", pointerEvents: "none", zIndex: 10 }}>
+          <span style={{ fontSize: 24 }}>{r.type === "fire" ? "🔥" : "🍳"}</span>
+        </div>
+      ))}
+
       {photoURL ? (
         <img src={photoURL} alt="" style={{
           width: 44, height: 44, borderRadius: "50%", margin: "0 auto 8px", display: "block",
@@ -507,6 +598,34 @@ function ParticipantCard({ name, photoURL, isSelf, muted, speaking, isNew, conne
       )}
       {!isSelf && connectionStatus === "failed" && (
         <div style={{ fontSize: 9, color: "var(--danger)", marginTop: 4 }}>No connection</div>
+      )}
+
+      {/* Reaction buttons (non-self only) */}
+      {!isSelf && onReaction && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 6 }}>
+          <button
+            onClick={() => onReaction("fire")}
+            title="They're on fire!"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px", fontSize: 14, cursor: "pointer", lineHeight: 1 }}
+          >🔥</button>
+          <button
+            onClick={() => onReaction("cook")}
+            title="They're cooking!"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px", fontSize: 14, cursor: "pointer", lineHeight: 1 }}
+          >🍳</button>
+        </div>
+      )}
+
+      {/* Kick button (creator only, non-self) */}
+      {!isSelf && isCreator && onKick && (
+        <button
+          onClick={onKick}
+          title="Kick user"
+          style={{
+            marginTop: 6, background: "rgba(224, 49, 49, 0.1)", border: "1px solid rgba(224, 49, 49, 0.2)",
+            borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "var(--danger)", cursor: "pointer",
+          }}
+        >Kick</button>
       )}
     </div>
   );
