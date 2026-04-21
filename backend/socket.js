@@ -124,7 +124,8 @@ function setupSocket(io) {
      * "reaction" — Send emoji reaction to a participant.
      */
     socket.on("reaction", ({ roomId, targetUserId, type }) => {
-      if (type !== "fire" && type !== "cook") return;
+      const validReactions = ["fire", "cook", "laugh", "thumbsup", "mad", "thumbsdown"];
+      if (!validReactions.includes(type)) return;
       io.to(roomId).emit("reaction", {
         fromUser: socket.userId,
         targetUserId,

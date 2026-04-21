@@ -646,7 +646,7 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
       {/* Floating reaction emojis */}
       {reactions.map((r) => (
         <div key={r.id} className="reaction-float" style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", pointerEvents: "none", zIndex: 10 }}>
-          <span style={{ fontSize: 24 }}>{r.type === "fire" ? "🔥" : "🍳"}</span>
+          <span style={{ fontSize: 24 }}>{{ fire: "🔥", cook: "🍳", laugh: "😂", thumbsup: "👍", mad: "😡", thumbsdown: "👎" }[r.type] || "🔥"}</span>
         </div>
       ))}
 
@@ -682,17 +682,22 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
 
       {/* Reaction buttons (non-self only) */}
       {!isSelf && onReaction && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 6 }}>
-          <button
-            onClick={() => onReaction("fire")}
-            title="They're on fire!"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px", fontSize: 14, cursor: "pointer", lineHeight: 1 }}
-          >🔥</button>
-          <button
-            onClick={() => onReaction("cook")}
-            title="They're cooking!"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 6px", fontSize: 14, cursor: "pointer", lineHeight: 1 }}
-          >🍳</button>
+        <div style={{ display: "flex", justifyContent: "center", gap: 3, marginTop: 6, flexWrap: "wrap" }}>
+          {[
+            { type: "fire", emoji: "🔥", title: "They're on fire!" },
+            { type: "cook", emoji: "🍳", title: "They're cooking!" },
+            { type: "laugh", emoji: "😂", title: "Hilarious!" },
+            { type: "thumbsup", emoji: "👍", title: "Agree!" },
+            { type: "thumbsdown", emoji: "👎", title: "Disagree!" },
+            { type: "mad", emoji: "😡", title: "Angry!" },
+          ].map((r) => (
+            <button
+              key={r.type}
+              onClick={() => onReaction(r.type)}
+              title={r.title}
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "2px 5px", fontSize: 13, cursor: "pointer", lineHeight: 1 }}
+            >{r.emoji}</button>
+          ))}
         </div>
       )}
 
