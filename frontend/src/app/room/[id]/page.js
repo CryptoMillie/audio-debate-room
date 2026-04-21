@@ -7,6 +7,74 @@ import { getRoom, joinRoom, getTurnCredentials } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import SimplePeer from "simple-peer";
 
+const URL_REGEX = /https?:\/\/[^\s<>"')\]]+/gi;
+
+function MessageText({ text }) {
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  const regex = new RegExp(URL_REGEX.source, "gi");
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={lastIndex}>{text.slice(lastIndex, match.index)}</span>);
+    }
+    parts.push(
+      <a
+        key={match.index}
+        href={match[0]}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "var(--primary-hover)", textDecoration: "underline", wordBreak: "break-all" }}
+      >
+        {match[0]}
+      </a>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(<span key={lastIndex}>{text.slice(lastIndex)}</span>);
+  }
+  return <>{parts}</>;
+}
+
+function UrlPreviewCard({ preview }) {
+  if (!preview) return null;
+
+  if (preview.type === "twitter" && preview.twitterHtml) {
+    return (
+      <a href={preview.url} target="_blank" rel="noopener noreferrer" className="url-preview-card" style={{ textDecoration: "none" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{preview.siteName}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginBottom: 2 }}>{preview.title}</div>
+        {preview.description && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{preview.description}</div>}
+        <div
+          style={{ marginTop: 8, fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}
+          dangerouslySetInnerHTML={{ __html: preview.twitterHtml }}
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a href={preview.url} target="_blank" rel="noopener noreferrer" className="url-preview-card" style={{ textDecoration: "none" }}>
+      {preview.image && (
+        <img
+          src={preview.image}
+          alt=""
+          style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 6, marginBottom: 8 }}
+          onError={(e) => { e.target.style.display = "none"; }}
+        />
+      )}
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>{preview.siteName || new URL(preview.url).hostname}</div>
+      {preview.title && <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginBottom: 2 }}>{preview.title}</div>}
+      {preview.description && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+          {preview.description.length > 120 ? preview.description.slice(0, 120) + "…" : preview.description}
+        </div>
+      )}
+    </a>
+  );
+}
+
 const VIBES = {
   chill: { color: "#6c5ce7", label: "CHILL" },
   debate: { color: "#e03131", label: "DEBATE" },
@@ -317,6 +385,17 @@ export default function RoomPage() {
         }]);
       });
 
+      // URL preview listener — attach preview to the matching message
+      socket.on("url-preview", ({ text, timestamp, preview }) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.text === text && !msg.urlPreview && Math.abs(msg.timestamp - timestamp) < 5000
+              ? { ...msg, urlPreview: preview }
+              : msg
+          )
+        );
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`Socket disconnected: ${reason}`);
       });
@@ -529,7 +608,8 @@ export default function RoomPage() {
                     ) : (
                       <>
                         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginRight: 6 }}>{msg.sender}</span>
-                        <span style={{ fontSize: 13, color: "var(--text)" }}>{msg.text}</span>
+                        <span style={{ fontSize: 13, color: "var(--text)" }}><MessageText text={msg.text} /></span>
+                        {msg.urlPreview && <UrlPreviewCard preview={msg.urlPreview} />}
                       </>
                     )}
                   </div>

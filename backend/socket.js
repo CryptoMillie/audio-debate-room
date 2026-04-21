@@ -24,6 +24,7 @@
  */
 
 const { handleFactCheck } = require("./services/factcheck");
+const { extractUrls, getUrlPreview } = require("./services/urlPreview");
 
 // Track which users are in which rooms: { roomId: [{ socketId, userId, displayName }] }
 const rooms = {};
@@ -153,13 +154,14 @@ function setupSocket(io) {
     socket.on("chat-message", async ({ roomId, text }) => {
       if (!text || !text.trim()) return;
       const trimmed = text.trim();
+      const timestamp = Date.now();
 
       // Broadcast the original message to others
       socket.to(roomId).emit("chat-message", {
         sender: socket.displayName,
         photoURL: socket.photoURL,
         text: trimmed,
-        timestamp: Date.now(),
+        timestamp,
       });
 
       // Handle /fact command
@@ -168,6 +170,16 @@ function setupSocket(io) {
         const result = await handleFactCheck(socket.userId, roomId, query);
         // Emit AI response to entire room (including sender)
         io.to(roomId).emit("ai-response", result);
+      }
+
+      // URL preview — fetch asynchronously after broadcast so chat isn't delayed
+      const urls = extractUrls(trimmed);
+      if (urls.length > 0) {
+        getUrlPreview(urls[0]).then((preview) => {
+          if (preview) {
+            io.to(roomId).emit("url-preview", { text: trimmed, timestamp, preview });
+          }
+        }).catch(() => {});
       }
     });
 

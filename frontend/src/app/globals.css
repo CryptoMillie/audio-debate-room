@@ -180,6 +180,28 @@ input::placeholder {
   box-shadow: 0 0 12px rgba(99, 102, 241, 0.1), inset 0 0 12px rgba(99, 102, 241, 0.03);
 }
 
+/* URL Preview Cards */
+.url-preview-card {
+  display: block;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: background 0.2s, border-color 0.2s;
+  max-width: 360px;
+  overflow: hidden;
+  color: inherit;
+}
+.url-preview-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+}
+.url-preview-card img {
+  border-radius: 6px;
+  max-height: 160px;
+}
+
 /* Mobile Responsive */
 @media (max-width: 640px) {
   .container {
