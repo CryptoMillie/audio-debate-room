@@ -32,12 +32,6 @@ export default function RoomPage() {
   const [justJoined, setJustJoined] = useState(new Set());
   const [copied, setCopied] = useState(false);
   const [peerStatus, setPeerStatus] = useState({}); // { socketId: "connecting"|"connected"|"failed" }
-  const [debugLog, setDebugLog] = useState([]);
-
-  const addDebug = useCallback((msg) => {
-    console.log(msg);
-    setDebugLog((prev) => [...prev.slice(-15), `${new Date().toLocaleTimeString()} ${msg}`]);
-  }, []);
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
@@ -99,14 +93,14 @@ export default function RoomPage() {
   const createPeer = useCallback((targetSocketId, initiator, stream) => {
     if (peersRef.current[targetSocketId]) return peersRef.current[targetSocketId];
 
-    addDebug(`Creating peer to ${targetSocketId.slice(0,6)}… initiator=${initiator}`);
+    console.log(`Creating peer to ${targetSocketId.slice(0,6)}… initiator=${initiator}`);
     setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "connecting" }));
 
     const iceConfig = iceServersRef.current || [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
     ];
-    addDebug(`ICE servers: ${iceConfig.length} (${iceConfig.some(s => s.urls?.toString().includes("turn")) ? "TURN+STUN" : "STUN only"})`);
+    console.log(`ICE servers: ${iceConfig.length} (${iceConfig.some(s => s.urls?.toString().includes("turn")) ? "TURN+STUN" : "STUN only"})`);
 
     const peer = new SimplePeer({
       initiator,
@@ -118,7 +112,7 @@ export default function RoomPage() {
     // Monitor ICE connection state
     peer._pc?.addEventListener?.("iceconnectionstatechange", () => {
       const state = peer._pc?.iceConnectionState;
-      addDebug(`ICE state: ${state}`);
+      console.log(`ICE state: ${state}`);
       if (state === "connected" || state === "completed") {
         setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "connected" }));
       } else if (state === "failed" || state === "disconnected") {
@@ -127,12 +121,12 @@ export default function RoomPage() {
     });
 
     peer.on("signal", (signal) => {
-      addDebug(`Signal OUT: ${signal.type || "candidate"}`);
+      console.log(`Signal OUT: ${signal.type || "candidate"}`);
       socketRef.current?.emit("signal", { targetSocketId, signal });
     });
 
     peer.on("stream", (remoteStream) => {
-      addDebug(`Got stream: ${remoteStream.getAudioTracks().length} audio tracks`);
+      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio tracks`);
       const existing = document.getElementById(`audio-${targetSocketId}`);
       if (existing) existing.remove();
 
@@ -146,9 +140,9 @@ export default function RoomPage() {
       let retries = 0;
       const tryPlay = () => {
         audio.play().then(() => {
-          addDebug("Audio playing!");
+          console.log("Audio playing!");
         }).catch((e) => {
-          addDebug(`Play failed (${retries + 1}): ${e.message}`);
+          console.log(`Play failed (${retries + 1}): ${e.message}`);
           if (retries < 10) { retries++; setTimeout(tryPlay, 300); }
         });
       };
@@ -156,12 +150,12 @@ export default function RoomPage() {
     });
 
     peer.on("connect", () => {
-      addDebug("P2P CONNECTED");
+      console.log("P2P CONNECTED");
       setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "connected" }));
     });
 
     peer.on("close", () => {
-      addDebug("Peer closed");
+      console.log("Peer closed");
       const audioEl = document.getElementById(`audio-${targetSocketId}`);
       if (audioEl) audioEl.remove();
       delete peersRef.current[targetSocketId];
@@ -169,7 +163,7 @@ export default function RoomPage() {
     });
 
     peer.on("error", (err) => {
-      addDebug(`Peer ERROR: ${err.message}`);
+      console.log(`Peer ERROR: ${err.message}`);
       setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "failed" }));
       const audioEl = document.getElementById(`audio-${targetSocketId}`);
       if (audioEl) audioEl.remove();
@@ -206,13 +200,13 @@ export default function RoomPage() {
       } catch (e) {}
 
       // Fetch TURN credentials from backend
-      addDebug("Fetching ICE servers...");
+      console.log("Fetching ICE servers...");
       try {
         const { iceServers } = await getTurnCredentials();
         iceServersRef.current = iceServers;
-        addDebug(`Got ${iceServers.length} ICE servers`);
+        console.log(`Got ${iceServers.length} ICE servers`);
       } catch (e) {
-        addDebug("TURN fetch failed, STUN only");
+        console.log("TURN fetch failed, STUN only");
         iceServersRef.current = [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
@@ -236,7 +230,7 @@ export default function RoomPage() {
       socket.connect();
 
       socket.on("connect", () => {
-        addDebug(`Socket connected: ${socket.id?.slice(0,6)}…`);
+        console.log(`Socket connected: ${socket.id?.slice(0,6)}…`);
         socket.emit("join-room", {
           roomId,
           userId: user.uid,
@@ -246,13 +240,13 @@ export default function RoomPage() {
       });
 
       socket.on("existing-users", (users) => {
-        addDebug(`Existing users: ${users.length}`);
+        console.log(`Existing users: ${users.length}`);
         setParticipants(users);
         users.forEach((u) => createPeer(u.socketId, true, stream));
       });
 
       socket.on("user-connected", (newUser) => {
-        addDebug(`User joined: ${newUser.displayName}`);
+        console.log(`User joined: ${newUser.displayName}`);
         setParticipants((prev) => [...prev, newUser]);
         createPeer(newUser.socketId, false, stream);
         setJustJoined((prev) => new Set([...prev, newUser.socketId]));
@@ -262,10 +256,10 @@ export default function RoomPage() {
       });
 
       socket.on("signal", ({ fromSocketId, signal }) => {
-        addDebug(`Signal IN: ${signal.type || "candidate"} from ${fromSocketId?.slice(0,6)}…`);
+        console.log(`Signal IN: ${signal.type || "candidate"} from ${fromSocketId?.slice(0,6)}…`);
         let peer = peersRef.current[fromSocketId];
         if (!peer || peer.destroyed) {
-          addDebug("Signal from unknown peer, creating responder");
+          console.log("Signal from unknown peer, creating responder");
           peer = createPeer(fromSocketId, false, stream);
         }
         peer.signal(signal);
@@ -286,7 +280,7 @@ export default function RoomPage() {
       });
 
       socket.on("disconnect", (reason) => {
-        addDebug(`Socket disconnected: ${reason}`);
+        console.log(`Socket disconnected: ${reason}`);
       });
 
       setConnected(true);
@@ -467,15 +461,6 @@ export default function RoomPage() {
             </form>
           </div>
 
-          {/* Debug Log */}
-          <div style={{ marginTop: 16, padding: 12, background: "rgba(0,0,0,0.5)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
-            <h3 style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8, letterSpacing: "0.05em" }}>CONNECTION LOG</h3>
-            <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)", maxHeight: 150, overflowY: "auto" }}>
-              {debugLog.length === 0 ? <div>No events yet</div> : debugLog.map((line, i) => (
-                <div key={i} style={{ color: line.includes("ERROR") || line.includes("failed") ? "var(--danger)" : line.includes("CONNECTED") || line.includes("playing") ? "var(--success)" : "var(--text-muted)" }}>{line}</div>
-              ))}
-            </div>
-          </div>
         </>
       )}
     </div>
