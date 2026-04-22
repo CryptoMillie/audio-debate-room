@@ -877,6 +877,7 @@ function VideoElement({ stream, className, muted: isMuted }) {
 function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [], videoStream }) {
   const isActive = speaking && !muted;
   const hasVideo = videoStream && videoStream.getVideoTracks().length > 0;
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div
@@ -890,6 +891,22 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
         overflow: "visible",
       }}
     >
+      {/* Expanded self-video overlay */}
+      {expanded && isSelf && hasVideo && (
+        <div
+          onClick={() => setExpanded(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(8, 10, 16, 0.85)", backdropFilter: "blur(12px)",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", animation: "overlayFadeIn 200ms ease forwards",
+          }}
+        >
+          <VideoElement stream={videoStream} className="self-video-expanded" muted />
+          <div style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)" }}>Tap anywhere to close</div>
+        </div>
+      )}
+
       {/* Floating reaction emojis */}
       {reactions.map((r) => (
         <div key={r.id} className="reaction-float" style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", pointerEvents: "none", zIndex: 10 }}>
@@ -899,7 +916,9 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
 
       {/* Video or avatar */}
       {hasVideo ? (
-        <VideoElement stream={videoStream} className={isSelf ? "self-video-preview" : "participant-video"} muted={isSelf} />
+        <div onClick={isSelf ? () => setExpanded(true) : undefined} style={{ cursor: isSelf ? "pointer" : "default" }}>
+          <VideoElement stream={videoStream} className={isSelf ? "self-video-preview" : "participant-video"} muted={isSelf} />
+        </div>
       ) : photoURL ? (
         <img src={photoURL} alt="" style={{
           width: 44, height: 44, borderRadius: "50%", margin: "0 auto 8px", display: "block",

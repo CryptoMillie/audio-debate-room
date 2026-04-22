@@ -439,6 +439,18 @@ input::placeholder {
   display: block;
 }
 
+/* Expanded self-video overlay */
+.self-video-expanded {
+  width: min(90vw, 480px);
+  height: auto;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 40px rgba(59, 91, 219, 0.3);
+  animation: winnerPop 300ms ease-out;
+}
+
 /* Spotlight area for screen share */
 .spotlight-area {
   background: rgba(15, 18, 24, 0.8);
