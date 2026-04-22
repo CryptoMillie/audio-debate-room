@@ -227,3 +227,161 @@ input::placeholder {
     display: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DEBATE MODE STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Winner reveal overlay */
+.winner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 16, 0);
+  animation: overlayFadeIn 300ms ease forwards;
+}
+
+@keyframes overlayFadeIn {
+  to { background: rgba(8, 10, 16, 0.88); }
+}
+
+/* Winner avatar entrance */
+.winner-avatar {
+  transform: scale(0.8);
+  opacity: 0;
+  animation: winnerPop 400ms ease-out forwards;
+}
+
+@keyframes winnerPop {
+  0% { transform: scale(0.8); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+/* Glow ring around winner avatar */
+.winner-glow {
+  animation: winnerPop 400ms ease-out forwards, winnerGlow 1.5s ease-in-out 400ms infinite;
+}
+
+@keyframes winnerGlow {
+  0%, 100% { box-shadow: 0 0 20px 4px rgba(59, 91, 219, 0.3); }
+  50% { box-shadow: 0 0 40px 8px rgba(59, 91, 219, 0.6); }
+}
+
+/* Winner text fade-in */
+.winner-text {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: winnerTextIn 300ms ease-out forwards;
+}
+
+@keyframes winnerTextIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Winner summary fade-in */
+.winner-summary {
+  opacity: 0;
+  animation: winnerTextIn 300ms ease-out forwards;
+}
+
+/* Debate panel card */
+.debate-panel {
+  background: rgba(15, 18, 24, 0.7);
+  border: 1px solid rgba(224, 49, 49, 0.2);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+  backdrop-filter: blur(10px);
+}
+
+/* Round timer bar */
+.round-timer-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+
+.round-timer-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+/* Prediction bar */
+.prediction-bar {
+  display: flex;
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+/* Score button */
+.score-btn {
+  background: rgba(59, 91, 219, 0.1);
+  border: 1px solid rgba(59, 91, 219, 0.2);
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: var(--primary-hover);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.score-btn:hover {
+  background: rgba(59, 91, 219, 0.2);
+  border-color: var(--primary);
+}
+
+/* Mode toggle pill */
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+}
+
+.mode-toggle.casual {
+  background: rgba(224, 49, 49, 0.1);
+  border: 1px solid rgba(224, 49, 49, 0.2);
+  color: var(--danger);
+}
+
+.mode-toggle.casual:hover {
+  background: rgba(224, 49, 49, 0.2);
+}
+
+.mode-toggle.debate {
+  background: rgba(47, 158, 68, 0.1);
+  border: 1px solid rgba(47, 158, 68, 0.2);
+  color: var(--success);
+}
+
+.mode-toggle.debate:hover {
+  background: rgba(47, 158, 68, 0.2);
+}
+
+.mode-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Spinner for judging phase */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

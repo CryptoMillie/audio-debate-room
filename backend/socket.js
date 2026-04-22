@@ -25,6 +25,13 @@
 
 const { handleFactCheck } = require("./services/factcheck");
 const { extractUrls, getUrlPreview } = require("./services/urlPreview");
+const {
+  enableDebateMode, disableDebateMode, getDebateSession, getRoomMode, getRawSession,
+  setTopic, registerDebater, unregisterDebater, openPredictions, addPrediction,
+  startDebate, advanceRound, submitScore, endDebate, markEnded,
+  calculateWinner, getScoreboard, addFactCheck, destroySession,
+} = require("./services/debate");
+const { generateJudgeSummary } = require("./services/aiJudge");
 
 // Track which users are in which rooms: { roomId: [{ socketId, userId, displayName }] }
 const rooms = {};
@@ -34,6 +41,9 @@ const bannedUsers = {};
 
 // Track room creators: { roomId: userId }
 const roomCreators = {};
+
+// Track debate round timers: { roomId: timeoutId }
+const debateTimers = {};
 
 function setupSocket(io) {
   io.on("connection", (socket) => {
@@ -77,6 +87,12 @@ function setupSocket(io) {
 
       // Tell everyone else in the room that a new user connected
       socket.to(roomId).emit("user-connected", user);
+
+      // Send current debate state to joining user (if room is in debate mode)
+      const debateSession = getDebateSession(roomId);
+      if (debateSession) {
+        socket.emit("room-mode-change", { mode: "debate", session: debateSession });
+      }
 
       console.log(`${displayName} joined room ${roomId} (${rooms[roomId].length} users)`);
     });
@@ -169,6 +185,8 @@ function setupSocket(io) {
       if (trimmed.startsWith("/fact ")) {
         const query = trimmed.slice(6).trim();
         const result = await handleFactCheck(socket.userId, roomId, query);
+        // Track fact checks during active debates
+        if (result.type === "fact") addFactCheck(roomId, result);
         // Emit AI response to entire room (including sender)
         io.to(roomId).emit("ai-response", result);
       }
@@ -206,10 +224,195 @@ function setupSocket(io) {
         // Clean up empty rooms
         if (rooms[roomId].length === 0) {
           delete rooms[roomId];
+          // Also clean up debate state
+          destroySession(roomId);
+          if (debateTimers[roomId]) {
+            clearTimeout(debateTimers[roomId]);
+            delete debateTimers[roomId];
+          }
         }
       }
     });
+
+    // ─── Debate Mode Events ─────────────────────────────────────
+
+    socket.on("enable-debate-mode", ({ roomId, config }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the room creator can enable debate mode." });
+        return;
+      }
+      const result = enableDebateMode(roomId, socket.userId, config || {});
+      if (result.error) {
+        socket.emit("debate-error", { message: result.error });
+        return;
+      }
+      io.to(roomId).emit("room-mode-change", { mode: "debate", session: result.session });
+    });
+
+    socket.on("disable-debate-mode", ({ roomId }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the room creator can disable debate mode." });
+        return;
+      }
+      const result = disableDebateMode(roomId, socket.userId);
+      if (result.error) {
+        socket.emit("debate-error", { message: result.error });
+        return;
+      }
+      if (debateTimers[roomId]) {
+        clearTimeout(debateTimers[roomId]);
+        delete debateTimers[roomId];
+      }
+      io.to(roomId).emit("room-mode-change", { mode: "casual" });
+    });
+
+    socket.on("debate-set-topic", ({ roomId, topic, sides }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the host can set the topic." });
+        return;
+      }
+      const result = setTopic(roomId, socket.userId, topic, sides);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+    });
+
+    socket.on("debate-register", ({ roomId, side }) => {
+      const result = registerDebater(roomId, socket.userId, side, socket.displayName, socket.photoURL);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+    });
+
+    socket.on("debate-unregister", ({ roomId }) => {
+      const result = unregisterDebater(roomId, socket.userId);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+    });
+
+    socket.on("debate-open-predictions", ({ roomId }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the host can open predictions." });
+        return;
+      }
+      const result = openPredictions(roomId, socket.userId);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+    });
+
+    socket.on("debate-predict", ({ roomId, predictedSide }) => {
+      const result = addPrediction(roomId, socket.userId, predictedSide);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+    });
+
+    socket.on("debate-start", ({ roomId }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the host can start the debate." });
+        return;
+      }
+      const result = startDebate(roomId, socket.userId);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-update", getDebateSession(roomId));
+      scheduleRoundEnd(io, roomId);
+    });
+
+    socket.on("debate-score", ({ roomId, targetUserId, score }) => {
+      const result = submitScore(roomId, socket.userId, targetUserId, score);
+      if (result.error) { socket.emit("debate-error", { message: result.error }); return; }
+      io.to(roomId).emit("debate-scoreboard", getScoreboard(roomId));
+    });
+
+    socket.on("debate-end", async ({ roomId }) => {
+      if (roomCreators[roomId] !== socket.userId) {
+        socket.emit("debate-error", { message: "Only the host can end the debate." });
+        return;
+      }
+      await finalizeDebate(io, roomId);
+    });
   });
+
+  // ─── Debate Timer Helpers ───────────────────────────────────
+
+  function scheduleRoundEnd(io, roomId) {
+    const session = getDebateSession(roomId);
+    if (!session || session.status !== "active") return;
+    if (debateTimers[roomId]) clearTimeout(debateTimers[roomId]);
+
+    const msLeft = session.rounds.timerEnd - Date.now();
+    debateTimers[roomId] = setTimeout(async () => {
+      const s = getDebateSession(roomId);
+      if (!s || s.status !== "active") return;
+
+      const advResult = advanceRound(roomId, roomCreators[roomId]);
+      if (advResult.done) {
+        // Final round ended — trigger judging
+        await finalizeDebate(io, roomId);
+      } else if (advResult.ok) {
+        io.to(roomId).emit("debate-update", getDebateSession(roomId));
+        scheduleRoundEnd(io, roomId);
+      }
+    }, Math.max(msLeft, 0));
+  }
+
+  async function finalizeDebate(io, roomId) {
+    if (debateTimers[roomId]) {
+      clearTimeout(debateTimers[roomId]);
+      delete debateTimers[roomId];
+    }
+
+    const endResult = endDebate(roomId, roomCreators[roomId]);
+    if (endResult.error) return;
+
+    // Broadcast judging status
+    io.to(roomId).emit("debate-update", getDebateSession(roomId));
+
+    // Calculate score-based winner
+    const scoreResult = calculateWinner(roomId);
+
+    // Try AI judge
+    const rawSession = getRawSession(roomId);
+    let aiResult = null;
+    if (rawSession) {
+      try {
+        aiResult = await generateJudgeSummary(rawSession);
+      } catch (e) {
+        console.error("AI judge failed:", e.message);
+      }
+    }
+
+    // Determine final winner
+    const winnerSide = (aiResult?.winner && aiResult.winner !== "tie")
+      ? aiResult.winner
+      : scoreResult.winnerSide;
+
+    let winnerId = null;
+    let winnerDisplayName = null;
+    let winnerPhotoURL = null;
+
+    if (winnerSide && winnerSide !== "tie" && rawSession) {
+      const entry = Object.entries(rawSession.debaters)
+        .find(([, d]) => d.side === winnerSide);
+      if (entry) {
+        winnerId = entry[0];
+        winnerDisplayName = entry[1].displayName;
+        winnerPhotoURL = entry[1].photoURL;
+      }
+    }
+
+    const winnerPayload = {
+      winnerId,
+      winnerDisplayName: winnerDisplayName || (winnerSide === "tie" ? "Tie" : winnerSide),
+      winnerPhotoURL,
+      winnerSide,
+      method: aiResult?.winner ? "ai-judge" : "score",
+      summary: aiResult?.summary || scoreResult.summary || "Winner decided by audience scores.",
+      scores: scoreResult.scores || {},
+      predictions: rawSession?.predictions?.counts || {},
+    };
+
+    markEnded(roomId);
+    io.to(roomId).emit("debate-winner", winnerPayload);
+    io.to(roomId).emit("debate-update", getDebateSession(roomId));
+  }
 }
 
 function getActiveUserCount() {

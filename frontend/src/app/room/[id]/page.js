@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/AuthContext";
 import { getRoom, joinRoom, getTurnCredentials } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import SimplePeer from "simple-peer";
+import DebatePanel from "@/components/DebatePanel";
+import WinnerReveal from "@/components/WinnerReveal";
 
 const URL_REGEX = /https?:\/\/[^\s<>"')\]]+/gi;
 
@@ -101,6 +103,10 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [peerStatus, setPeerStatus] = useState({}); // { socketId: "connecting"|"connected"|"failed" }
   const [reactions, setReactions] = useState([]); // [{ id, targetUserId, type, timestamp }]
+  const [roomMode, setRoomMode] = useState("casual");
+  const [debateSession, setDebateSession] = useState(null);
+  const [debateWinner, setDebateWinner] = useState(null);
+  const [debateError, setDebateError] = useState(null);
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
@@ -396,6 +402,30 @@ export default function RoomPage() {
         );
       });
 
+      // ─── Debate Mode Listeners ────────────────────────────────
+      socket.on("room-mode-change", ({ mode, session }) => {
+        setRoomMode(mode);
+        setDebateSession(mode === "debate" ? session : null);
+        if (mode === "casual") { setDebateWinner(null); setDebateError(null); }
+      });
+
+      socket.on("debate-update", (session) => {
+        setDebateSession(session);
+      });
+
+      socket.on("debate-scoreboard", (scoreboard) => {
+        setDebateSession((prev) => prev ? { ...prev, scores: scoreboard.scores } : prev);
+      });
+
+      socket.on("debate-winner", (winner) => {
+        setDebateWinner(winner);
+      });
+
+      socket.on("debate-error", ({ message }) => {
+        setDebateError(message);
+        setTimeout(() => setDebateError(null), 4000);
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`Socket disconnected: ${reason}`);
       });
@@ -489,13 +519,42 @@ export default function RoomPage() {
                 animation: room.vibe === "breaking" ? "breakingPulse 2s infinite" : "none",
               }}>{VIBES[room.vibe].label}</span>
             )}
+            {/* Mode indicator */}
+            {connected && roomMode === "debate" && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                background: "rgba(224, 49, 49, 0.15)", color: "var(--danger)",
+                letterSpacing: "0.05em",
+              }}>DEBATE MODE</span>
+            )}
           </div>
           <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", wordBreak: "break-word" }}>{room?.title || "Loading..."}</h1>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             <code style={{ background: "rgba(22, 27, 36, 0.8)", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{roomId}</code>
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          {/* Mode Toggle — creator only */}
+          {connected && isCreator && (
+            <button
+              className={`mode-toggle ${roomMode}`}
+              disabled={debateSession?.status === "active" || debateSession?.status === "judging"}
+              onClick={() => {
+                if (roomMode === "casual") {
+                  socketRef.current?.emit("enable-debate-mode", { roomId, config: {} });
+                } else {
+                  socketRef.current?.emit("disable-debate-mode", { roomId });
+                }
+              }}
+              title={
+                (debateSession?.status === "active" || debateSession?.status === "judging")
+                  ? "Cannot switch mode during active debate"
+                  : roomMode === "casual" ? "Enable Debate Mode" : "Back to Casual"
+              }
+            >
+              {roomMode === "casual" ? "⚔️ Debate" : "💬 Casual"}
+            </button>
+          )}
           <button className="btn-outline" onClick={shareRoom} style={{ padding: "8px 14px", fontSize: 12 }}>
             {copied ? "Copied" : "Share"}
           </button>
@@ -565,6 +624,18 @@ export default function RoomPage() {
             </div>
           </div>
 
+          {/* Debate Panel — only in debate mode */}
+          {roomMode === "debate" && debateSession && (
+            <DebatePanel
+              session={debateSession}
+              userId={user.uid}
+              isCreator={isCreator}
+              socket={socketRef.current}
+              roomId={roomId}
+              error={debateError}
+            />
+          )}
+
           {/* Live Chat */}
           <div className="card" style={{ marginTop: 16 }}>
             <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>CHAT</h2>
@@ -624,6 +695,11 @@ export default function RoomPage() {
           </div>
 
         </>
+      )}
+
+      {/* Winner Reveal Overlay */}
+      {debateWinner && (
+        <WinnerReveal winner={debateWinner} onDismiss={() => setDebateWinner(null)} />
       )}
     </div>
   );
