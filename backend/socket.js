@@ -321,6 +321,24 @@ function setupSocket(io) {
       io.to(roomId).emit("debate-scoreboard", getScoreboard(roomId));
     });
 
+    // ─── Video / Screen Share Relay Events ───────────────────
+    socket.on("user-video-toggle", ({ roomId, videoEnabled }) => {
+      socket.to(roomId).emit("user-video-toggle", {
+        userId: socket.userId,
+        socketId: socket.id,
+        videoEnabled,
+      });
+    });
+
+    socket.on("user-screen-share", ({ roomId, screenSharing, displayName }) => {
+      socket.to(roomId).emit("user-screen-share", {
+        userId: socket.userId,
+        socketId: socket.id,
+        screenSharing,
+        displayName: displayName || socket.displayName,
+      });
+    });
+
     socket.on("debate-end", async ({ roomId }) => {
       if (roomCreators[roomId] !== socket.userId) {
         socket.emit("debate-error", { message: "Only the host can end the debate." });

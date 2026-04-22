@@ -115,6 +115,12 @@ input::placeholder {
   padding: 24px;
   position: relative;
   z-index: 1;
+  transition: max-width 0.4s ease;
+}
+
+/* Wider layout when debate is active */
+.container.debate-active {
+  max-width: 1100px;
 }
 
 .card {
@@ -294,16 +300,72 @@ input::placeholder {
   background: rgba(15, 18, 24, 0.7);
   border: 1px solid rgba(224, 49, 49, 0.2);
   border-radius: 12px;
-  padding: 20px;
+  padding: 24px;
   margin-top: 16px;
   backdrop-filter: blur(10px);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+/* Pulsing border during active debate */
+.debate-panel.debate-live {
+  animation: debateLive 2s ease-in-out infinite;
+}
+
+@keyframes debateLive {
+  0%, 100% { border-color: rgba(224, 49, 49, 0.25); box-shadow: 0 0 8px rgba(224, 49, 49, 0.05); }
+  50% { border-color: rgba(224, 49, 49, 0.5); box-shadow: 0 0 20px rgba(224, 49, 49, 0.1); }
+}
+
+/* Topic banner */
+.debate-topic-banner {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: rgba(224, 49, 49, 0.06);
+  border: 1px solid rgba(224, 49, 49, 0.12);
+}
+
+/* Debater card in active phase */
+.debater-card {
+  text-align: center;
+  padding: 20px 16px;
+  borderRadius: 12px;
+  background: rgba(22, 27, 36, 0.5);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.debater-card.side-a {
+  border: 1px solid rgba(59, 91, 219, 0.3);
+  border-left: 3px solid #3b5bdb;
+}
+
+.debater-card.side-b {
+  border: 1px solid rgba(224, 49, 49, 0.3);
+  border-left: 3px solid #e03131;
+}
+
+/* Score number with transition */
+.debate-score {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.debate-score.score-up {
+  transform: scale(1.15);
+  color: var(--success);
 }
 
 /* Round timer bar */
 .round-timer-bar {
-  height: 4px;
+  height: 6px;
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 3px;
   overflow: hidden;
   margin: 12px 0 8px;
 }
@@ -311,15 +373,15 @@ input::placeholder {
 .round-timer-fill {
   height: 100%;
   background: var(--primary);
-  border-radius: 2px;
+  border-radius: 3px;
   transition: width 1s linear;
 }
 
 /* Prediction bar */
 .prediction-bar {
   display: flex;
-  height: 28px;
-  border-radius: 6px;
+  height: 36px;
+  border-radius: 8px;
   overflow: hidden;
   margin: 8px 0;
 }
@@ -329,9 +391,9 @@ input::placeholder {
   background: rgba(59, 91, 219, 0.1);
   border: 1px solid rgba(59, 91, 219, 0.2);
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 10px 20px;
   color: var(--primary-hover);
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -339,6 +401,100 @@ input::placeholder {
 .score-btn:hover {
   background: rgba(59, 91, 219, 0.2);
   border-color: var(--primary);
+}
+
+.score-btn.side-a {
+  background: rgba(59, 91, 219, 0.12);
+  border-color: rgba(59, 91, 219, 0.25);
+  color: #4c6ef5;
+}
+
+.score-btn.side-b {
+  background: rgba(224, 49, 49, 0.12);
+  border-color: rgba(224, 49, 49, 0.25);
+  color: #e03131;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIDEO / SCREEN SHARE STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Participant card video */
+.participant-video {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: #000;
+}
+
+/* Self video preview */
+.self-video-preview {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 8px;
+  display: block;
+}
+
+/* Spotlight area for screen share */
+.spotlight-area {
+  background: rgba(15, 18, 24, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  animation: joinPop 0.3s ease-out;
+}
+
+.spotlight-video {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #000;
+}
+
+.spotlight-label {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  letter-spacing: 0.03em;
+}
+
+/* Media control buttons */
+.media-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.media-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.media-btn.active {
+  background: rgba(59, 91, 219, 0.15);
+  border-color: rgba(59, 91, 219, 0.3);
+  color: var(--primary-hover);
+}
+
+.media-btn.screen-active {
+  background: rgba(47, 158, 68, 0.15);
+  border-color: rgba(47, 158, 68, 0.3);
+  color: var(--success);
 }
 
 /* Mode toggle pill */

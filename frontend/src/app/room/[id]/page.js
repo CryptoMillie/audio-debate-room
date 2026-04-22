@@ -107,9 +107,15 @@ export default function RoomPage() {
   const [debateSession, setDebateSession] = useState(null);
   const [debateWinner, setDebateWinner] = useState(null);
   const [debateError, setDebateError] = useState(null);
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [remoteVideos, setRemoteVideos] = useState({}); // { socketId: MediaStream }
+  const [selfVideoStream, setSelfVideoStream] = useState(null);
+  const [screenShareInfo, setScreenShareInfo] = useState(null); // { socketId, displayName, stream }
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
+  const videoStreamRef = useRef(null);
   const socketRef = useRef(null);
   const analyserRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -131,13 +137,21 @@ export default function RoomPage() {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((t) => t.stop());
+      videoStreamRef.current = null;
+    }
     if (socketRef.current) {
-      // Remove all listeners before disconnecting
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
     }
     setConnected(false);
     setSpeaking(false);
+    setVideoEnabled(false);
+    setScreenSharing(false);
+    setSelfVideoStream(null);
+    setRemoteVideos({});
+    setScreenShareInfo(null);
   }, [cleanupPeers]);
 
   const startSpeakingDetection = useCallback((stream) => {
@@ -201,27 +215,34 @@ export default function RoomPage() {
     });
 
     peer.on("stream", (remoteStream) => {
-      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio tracks`);
-      const existing = document.getElementById(`audio-${targetSocketId}`);
-      if (existing) existing.remove();
+      const hasVideo = remoteStream.getVideoTracks().length > 0;
+      const hasAudio = remoteStream.getAudioTracks().length > 0;
+      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio, ${remoteStream.getVideoTracks().length} video`);
 
-      const audio = document.createElement("audio");
-      audio.id = `audio-${targetSocketId}`;
-      audio.setAttribute("playsinline", "");
-      audio.volume = 1.0;
-      document.body.appendChild(audio);
-      audio.srcObject = remoteStream;
+      // Always handle audio
+      if (hasAudio) {
+        const existing = document.getElementById(`audio-${targetSocketId}`);
+        if (existing) existing.remove();
 
-      let retries = 0;
-      const tryPlay = () => {
-        audio.play().then(() => {
-          console.log("Audio playing!");
-        }).catch((e) => {
-          console.log(`Play failed (${retries + 1}): ${e.message}`);
-          if (retries < 10) { retries++; setTimeout(tryPlay, 300); }
-        });
-      };
-      tryPlay();
+        const audio = document.createElement("audio");
+        audio.id = `audio-${targetSocketId}`;
+        audio.setAttribute("playsinline", "");
+        audio.volume = 1.0;
+        document.body.appendChild(audio);
+        audio.srcObject = remoteStream;
+
+        let retries = 0;
+        const tryPlay = () => {
+          audio.play().then(() => console.log("Audio playing!"))
+            .catch((e) => { if (retries < 10) { retries++; setTimeout(tryPlay, 300); } });
+        };
+        tryPlay();
+      }
+
+      // Handle video track if present
+      if (hasVideo) {
+        setRemoteVideos((prev) => ({ ...prev, [targetSocketId]: remoteStream }));
+      }
     });
 
     peer.on("connect", () => {
@@ -235,6 +256,8 @@ export default function RoomPage() {
       if (audioEl) audioEl.remove();
       delete peersRef.current[targetSocketId];
       setPeerStatus((prev) => { const n = { ...prev }; delete n[targetSocketId]; return n; });
+      setRemoteVideos((prev) => { const n = { ...prev }; delete n[targetSocketId]; return n; });
+      setScreenShareInfo((prev) => prev?.socketId === targetSocketId ? null : prev);
     });
 
     peer.on("error", (err) => {
@@ -426,6 +449,25 @@ export default function RoomPage() {
         setTimeout(() => setDebateError(null), 4000);
       });
 
+      // Video / Screen Share presence signals
+      socket.on("user-screen-share", ({ userId: uid, screenSharing: sharing, displayName: name }) => {
+        if (sharing) {
+          // Find the socketId for this userId
+          setParticipants((prev) => {
+            const p = prev.find((u) => u.userId === uid);
+            if (p) setScreenShareInfo((si) => ({ socketId: p.socketId, displayName: name || p.displayName }));
+            return prev;
+          });
+        } else {
+          setScreenShareInfo((prev) => {
+            // Clear if it was this user sharing
+            const match = participants.find((u) => u.userId === uid);
+            if (match && prev?.socketId === match.socketId) return null;
+            return prev;
+          });
+        }
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`Socket disconnected: ${reason}`);
       });
@@ -476,6 +518,91 @@ export default function RoomPage() {
     socketRef.current.emit("reaction", { roomId, targetUserId, type });
   };
 
+  const toggleVideo = useCallback(async () => {
+    if (videoEnabled) {
+      // Stop video
+      if (videoStreamRef.current) {
+        videoStreamRef.current.getVideoTracks().forEach((t) => t.stop());
+        // Remove video track from all peers
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer && !peer.destroyed) {
+            const sender = peer._pc?.getSenders?.()?.find((s) => s.track?.kind === "video");
+            if (sender) peer._pc.removeTrack(sender);
+          }
+        });
+        videoStreamRef.current = null;
+      }
+      setSelfVideoStream(null);
+      setVideoEnabled(false);
+      socketRef.current?.emit("user-video-toggle", { roomId, videoEnabled: false });
+    } else {
+      try {
+        const vidStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 320, height: 240, facingMode: "user" },
+        });
+        videoStreamRef.current = vidStream;
+        setSelfVideoStream(vidStream);
+        setVideoEnabled(true);
+        // Add video track to all peers
+        const videoTrack = vidStream.getVideoTracks()[0];
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer && !peer.destroyed && peer._pc) {
+            peer._pc.addTrack(videoTrack, vidStream);
+          }
+        });
+        socketRef.current?.emit("user-video-toggle", { roomId, videoEnabled: true });
+      } catch (e) {
+        console.error("Camera access failed:", e);
+      }
+    }
+  }, [videoEnabled, roomId]);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (screenSharing) {
+      // Stop screen share
+      if (videoStreamRef.current) {
+        videoStreamRef.current.getTracks().forEach((t) => t.stop());
+        videoStreamRef.current = null;
+      }
+      setSelfVideoStream(null);
+      setScreenSharing(false);
+      setScreenShareInfo(null);
+      socketRef.current?.emit("user-screen-share", { roomId, screenSharing: false });
+    } else {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        videoStreamRef.current = screenStream;
+        setSelfVideoStream(screenStream);
+        setScreenSharing(true);
+        setVideoEnabled(false); // Screen share replaces camera
+
+        const videoTrack = screenStream.getVideoTracks()[0];
+        // Auto-stop when user clicks "Stop sharing" in browser UI
+        videoTrack.onended = () => {
+          setScreenSharing(false);
+          setSelfVideoStream(null);
+          setScreenShareInfo(null);
+          videoStreamRef.current = null;
+          socketRef.current?.emit("user-screen-share", { roomId, screenSharing: false });
+        };
+
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer && !peer.destroyed && peer._pc) {
+            const existingSender = peer._pc.getSenders?.()?.find((s) => s.track?.kind === "video");
+            if (existingSender) {
+              existingSender.replaceTrack(videoTrack);
+            } else {
+              peer._pc.addTrack(videoTrack, screenStream);
+            }
+          }
+        });
+        socketRef.current?.emit("user-screen-share", { roomId, screenSharing: true, displayName: user.displayName });
+      } catch (e) {
+        console.error("Screen share failed:", e);
+      }
+    }
+  }, [screenSharing, roomId, user]);
+
   const isCreator = room?.created_by === user?.uid;
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -505,7 +632,7 @@ export default function RoomPage() {
   const failedPeers = Object.values(peerStatus).filter((s) => s === "failed").length;
 
   return (
-    <div className="container">
+    <div className={`container${roomMode === "debate" && debateSession?.status === "active" ? " debate-active" : ""}`}>
       {/* Header */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -572,19 +699,35 @@ export default function RoomPage() {
         </div>
       ) : (
         <>
-          {/* Audio Controls + Connection Status */}
+          {/* Media Controls */}
           <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 16, padding: "16px" }}>
-            <button
-              onClick={toggleMute}
-              style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "12px 28px",
-                background: muted ? "transparent" : "var(--primary)",
-                border: muted ? "1px solid rgba(224, 49, 49, 0.3)" : "none",
-                color: muted ? "var(--danger)" : "#fff", borderRadius: 8,
-              }}
-            >
-              {muted ? <><MicOffIcon /> Unmute</> : <><MicOnIcon /> Mute</>}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              <button
+                onClick={toggleMute}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "10px 20px",
+                  background: muted ? "transparent" : "var(--primary)",
+                  border: muted ? "1px solid rgba(224, 49, 49, 0.3)" : "none",
+                  color: muted ? "var(--danger)" : "#fff", borderRadius: 8, fontSize: 12,
+                }}
+              >
+                {muted ? <><MicOffIcon /> Unmute</> : <><MicOnIcon /> Mute</>}
+              </button>
+              <button
+                onClick={toggleVideo}
+                className={`media-btn${videoEnabled ? " active" : ""}`}
+                title={videoEnabled ? "Turn off camera" : "Turn on camera"}
+              >
+                <VideoIcon /> {videoEnabled ? "Cam On" : "Cam"}
+              </button>
+              <button
+                onClick={toggleScreenShare}
+                className={`media-btn${screenSharing ? " screen-active" : ""}`}
+                title={screenSharing ? "Stop sharing" : "Share screen"}
+              >
+                <ScreenIcon /> {screenSharing ? "Sharing" : "Screen"}
+              </button>
+            </div>
             {participants.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {connectedPeers > 0 && (
@@ -600,13 +743,28 @@ export default function RoomPage() {
             )}
           </div>
 
+          {/* Screen Share Spotlight */}
+          {screenShareInfo && remoteVideos[screenShareInfo.socketId] && (
+            <div className="spotlight-area">
+              <VideoElement stream={remoteVideos[screenShareInfo.socketId]} className="spotlight-video" />
+              <div className="spotlight-label">{screenShareInfo.displayName} is sharing their screen</div>
+            </div>
+          )}
+          {/* Self screen share spotlight */}
+          {screenSharing && selfVideoStream && (
+            <div className="spotlight-area">
+              <VideoElement stream={selfVideoStream} className="spotlight-video" muted />
+              <div className="spotlight-label">You are sharing your screen</div>
+            </div>
+          )}
+
           {/* Participants */}
           <div className="card">
             <h2 style={{ fontSize: 12, marginBottom: 20, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
               IN ROOM ({participants.length + 1})
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
-              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} />
+              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} videoStream={videoEnabled && selfVideoStream && !screenSharing ? selfVideoStream : null} />
               {participants.map((p) => (
                 <ParticipantCard
                   key={p.socketId}
@@ -619,6 +777,7 @@ export default function RoomPage() {
                   onKick={() => kickUser(p.userId)}
                   onReaction={(type) => sendReaction(p.userId, type)}
                   reactions={reactions.filter((r) => r.targetUserId === p.userId)}
+                  videoStream={remoteVideos[p.socketId] || null}
                 />
               ))}
             </div>
@@ -705,8 +864,20 @@ export default function RoomPage() {
   );
 }
 
-function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [] }) {
+function VideoElement({ stream, className, muted: isMuted }) {
+  const videoRef = useRef(null);
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+  return <video ref={videoRef} autoPlay playsInline muted={isMuted} className={className} />;
+}
+
+function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [], videoStream }) {
   const isActive = speaking && !muted;
+  const hasVideo = videoStream && videoStream.getVideoTracks().length > 0;
+
   return (
     <div
       style={{
@@ -726,7 +897,10 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
         </div>
       ))}
 
-      {photoURL ? (
+      {/* Video or avatar */}
+      {hasVideo ? (
+        <VideoElement stream={videoStream} className={isSelf ? "self-video-preview" : "participant-video"} muted={isSelf} />
+      ) : photoURL ? (
         <img src={photoURL} alt="" style={{
           width: 44, height: 44, borderRadius: "50%", margin: "0 auto 8px", display: "block",
           border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
@@ -789,6 +963,25 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
         >Kick</button>
       )}
     </div>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="23 7 16 12 23 17 23 7" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
+  );
+}
+
+function ScreenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
   );
 }
 
