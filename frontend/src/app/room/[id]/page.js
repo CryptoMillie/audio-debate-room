@@ -112,6 +112,8 @@ export default function RoomPage() {
   const [remoteVideos, setRemoteVideos] = useState({}); // { socketId: MediaStream }
   const [selfVideoStream, setSelfVideoStream] = useState(null);
   const [screenShareInfo, setScreenShareInfo] = useState(null); // { socketId, displayName, stream }
+  const [micVolume, setMicVolume] = useState(1.0);
+  const [mediaVolume, setMediaVolume] = useState(0.5);
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
@@ -121,6 +123,8 @@ export default function RoomPage() {
   const animFrameRef = useRef(null);
   const chatEndRef = useRef(null);
   const iceServersRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const mediaVolumeRef = useRef(0.5);
 
   const cleanupPeers = useCallback(() => {
     Object.values(peersRef.current).forEach((peer) => {
@@ -135,8 +139,14 @@ export default function RoomPage() {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
+      // Also stop raw mic hardware tracks
+      if (streamRef.rawMic) {
+        streamRef.rawMic.getTracks().forEach((t) => t.stop());
+        streamRef.rawMic = null;
+      }
       streamRef.current = null;
     }
+    gainNodeRef.current = null;
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach((t) => t.stop());
       videoStreamRef.current = null;
@@ -228,7 +238,7 @@ export default function RoomPage() {
           const audio = document.createElement("audio");
           audio.id = audioElId;
           audio.setAttribute("playsinline", "");
-          audio.volume = 1.0;
+          audio.volume = mediaVolumeRef.current;
           document.body.appendChild(audio);
           audio.srcObject = remoteStream;
 
@@ -343,13 +353,24 @@ export default function RoomPage() {
         ];
       }
 
-      // Get mic
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Get mic and route through GainNode for volume control
+      const rawMicStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: false,
       });
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(rawMicStream);
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = micVolume;
+      gainNodeRef.current = gainNode;
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(gainNode);
+      gainNode.connect(dest);
+      const stream = dest.stream;
       streamRef.current = stream;
-      startSpeakingDetection(stream);
+      // Keep raw mic ref so we can stop hardware tracks on cleanup
+      streamRef.rawMic = rawMicStream;
+      startSpeakingDetection(rawMicStream);
 
       // Socket setup — remove old listeners first
       const socket = getSocket();
@@ -512,6 +533,21 @@ export default function RoomPage() {
   }, [user, roomId, room, createPeer, startSpeakingDetection, cleanup, router]);
 
   useEffect(() => cleanup, [cleanup]);
+
+  // Sync mic gain when slider changes
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = micVolume;
+    }
+  }, [micVolume]);
+
+  // Sync all remote audio elements when media volume changes
+  useEffect(() => {
+    mediaVolumeRef.current = mediaVolume;
+    document.querySelectorAll('[id^="audio-"]').forEach((el) => {
+      el.volume = mediaVolume;
+    });
+  }, [mediaVolume]);
 
   const toggleMute = () => {
     if (streamRef.current) {
@@ -776,6 +812,31 @@ export default function RoomPage() {
               >
                 <ScreenIcon /> {screenSharing ? "Sharing" : "Screen"}
               </button>
+            </div>
+            {/* Volume Sliders */}
+            <div className="volume-controls">
+              <div className="volume-row">
+                <MicOnIcon />
+                <span className="volume-label">Mic</span>
+                <input
+                  type="range" min="0" max="1" step="0.01"
+                  value={micVolume}
+                  onChange={(e) => setMicVolume(parseFloat(e.target.value))}
+                  className="volume-slider mic-slider"
+                />
+                <span className="volume-value">{Math.round(micVolume * 100)}%</span>
+              </div>
+              <div className="volume-row">
+                <SpeakerIcon />
+                <span className="volume-label">Media</span>
+                <input
+                  type="range" min="0" max="1" step="0.01"
+                  value={mediaVolume}
+                  onChange={(e) => setMediaVolume(parseFloat(e.target.value))}
+                  className="volume-slider media-slider"
+                />
+                <span className="volume-value">{Math.round(mediaVolume * 100)}%</span>
+              </div>
             </div>
             {participants.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -1072,6 +1133,16 @@ function MicOffIcon() {
       <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" />
       <line x1="12" y1="19" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
     </svg>
   );
 }
