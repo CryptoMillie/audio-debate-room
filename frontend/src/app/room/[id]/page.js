@@ -833,7 +833,7 @@ export default function RoomPage() {
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.05em" }}>BACKCHANNEL</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: "0.04em", textShadow: "0 0 20px rgba(59, 91, 219, 0.2)" }}>BACKCHANNEL</span>
             {room?.vibe && VIBES[room.vibe] && (
               <span style={{
                 fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
@@ -851,7 +851,7 @@ export default function RoomPage() {
               }}>DEBATE MODE</span>
             )}
           </div>
-          <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.5px", wordBreak: "break-word" }}>{room?.title || "Loading..."}</h1>
+          <h1 style={{ fontSize: "clamp(22px, 6vw, 30px)", fontWeight: 800, color: "#fff", letterSpacing: "-1px", wordBreak: "break-word" }}>{room?.title || "Loading..."}</h1>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             <code style={{ background: "rgba(22, 27, 36, 0.8)", padding: "2px 8px", borderRadius: 4, fontSize: 11 }}>{roomId}</code>
           </p>
@@ -886,16 +886,16 @@ export default function RoomPage() {
       </header>
 
       {!connected ? (
-        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "56px 28px" }}>
           <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.15 }}><MicOnIcon size={48} /></div>
           {!joinRole ? (
             <>
-              <p style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 14 }}>How do you want to join?</p>
-              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-                <button className="btn-primary" onClick={() => { setJoinRole("speaker"); }} style={{ fontSize: 15, padding: "14px 32px", borderRadius: 8 }}>
+              <p style={{ marginBottom: 28, color: "var(--text-muted)", fontSize: 15 }}>How do you want to join?</p>
+              <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn-primary" onClick={() => { setJoinRole("speaker"); }} style={{ fontSize: 16, padding: "16px 40px", borderRadius: 10 }}>
                   Join Voice
                 </button>
-                <button className="btn-outline" onClick={() => { setJoinRole("listener"); }} style={{ fontSize: 15, padding: "14px 32px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <button className="btn-outline" onClick={() => { setJoinRole("listener"); }} style={{ fontSize: 16, padding: "16px 40px", borderRadius: 10, border: "1px solid var(--border)" }}>
                   Listen Only
                 </button>
               </div>
@@ -1030,7 +1030,7 @@ export default function RoomPage() {
 
           {/* Participants */}
           <div className="card">
-            <h2 style={{ fontSize: 12, marginBottom: 20, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>
+            <h2 style={{ fontSize: 13, marginBottom: 20, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.06em" }}>
               IN ROOM ({participants.length + 1})
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
@@ -1070,7 +1070,7 @@ export default function RoomPage() {
 
           {/* Live Chat */}
           <div className="card" style={{ marginTop: 16 }}>
-            <h2 style={{ fontSize: 12, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500, letterSpacing: "0.05em" }}>CHAT</h2>
+            <h2 style={{ fontSize: 13, marginBottom: 12, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.06em" }}>CHAT</h2>
             <div style={{ maxHeight: "min(240px, 35vh)", overflowY: "auto", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               {messages.length === 0 && (
                 <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "16px 0" }}>No messages yet</p>

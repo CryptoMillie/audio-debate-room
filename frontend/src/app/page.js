@@ -98,7 +98,7 @@ export default function Dashboard() {
           {["LIVE", "UNMUTED", "RAW", "TRUTH", "NO CAP", "ON AIR"].map((word, i) => (
             <span key={word} style={{
               position: "absolute",
-              fontSize: [28, 18, 24, 20, 16, 22][i],
+              fontSize: [34, 22, 28, 24, 20, 26][i],
               fontWeight: 900,
               color: "#fff",
               opacity: 0.04,
@@ -111,15 +111,15 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <h1 style={{ fontSize: "clamp(36px, 10vw, 52px)", fontWeight: 800, letterSpacing: "-2px", marginBottom: 12, color: "#fff" }}>
+        <h1 style={{ fontSize: "clamp(48px, 14vw, 72px)", fontWeight: 900, letterSpacing: "-3px", marginBottom: 14, color: "#fff", textShadow: "0 0 40px rgba(59, 91, 219, 0.25)" }}>
           Backchannel
         </h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: 16, fontSize: "clamp(14px, 3.5vw, 16px)", fontWeight: 500 }}>
+        <p style={{ color: "var(--text-muted)", marginBottom: 20, fontSize: "clamp(15px, 4vw, 18px)", fontWeight: 500 }}>
           Drop in. Speak up. No recordings.
         </p>
 
         {/* Equalizer bars */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 32, height: 24, alignItems: "flex-end" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 40, height: 28, alignItems: "flex-end" }}>
           {[0.6, 1.0, 0.4, 0.8, 0.5].map((delay, i) => (
             <div key={i} style={{
               width: 3,
@@ -158,7 +158,7 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
-          <button className="btn-primary" onClick={login} style={{ fontSize: 15, padding: "14px 40px", borderRadius: 8 }}>
+          <button className="btn-primary" onClick={login} style={{ fontSize: 16, padding: "16px 48px", borderRadius: 10 }}>
             Sign in with Google
           </button>
         )}
@@ -212,7 +212,7 @@ export default function Dashboard() {
       </div>
 
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>Backchannel</h1>
+        <h1 style={{ fontSize: "clamp(28px, 6vw, 38px)", fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", textShadow: "0 0 30px rgba(59, 91, 219, 0.2)" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             onClick={() => { setProfileName(user.displayName || ""); setProfilePhoto(user.photoURL || ""); setShowProfile(true); }}
@@ -235,10 +235,10 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 28 }}>
         {/* Create Room */}
         <div className="card">
-          <h2 style={{ fontSize: 14, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500 }}>Create a Room</h2>
+          <h2 style={{ fontSize: 15, marginBottom: 14, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.02em" }}>Create a Room</h2>
           <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
               placeholder="Room name..."
@@ -275,7 +275,7 @@ export default function Dashboard() {
 
         {/* Join Room */}
         <div className="card">
-          <h2 style={{ fontSize: 14, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500 }}>Join a Room</h2>
+          <h2 style={{ fontSize: 15, marginBottom: 14, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.02em" }}>Join a Room</h2>
           <form onSubmit={handleJoin} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
               placeholder="Room ID"
@@ -289,7 +289,7 @@ export default function Dashboard() {
 
       {/* Room Discovery Feed */}
       <div className="card">
-        <h2 style={{ fontSize: 14, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500 }}>Discover Rooms</h2>
+        <h2 style={{ fontSize: 15, marginBottom: 14, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.02em" }}>Discover Rooms</h2>
 
         {/* Search */}
         <input
@@ -325,7 +325,7 @@ export default function Dashboard() {
             {discoveryLoading ? "Loading..." : "No rooms found."}
           </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {discoveryRooms.map((room) => {
               const rv = VIBES[room.vibe] || VIBES.chill;
               return (
@@ -334,7 +334,7 @@ export default function Dashboard() {
                   onClick={() => router.push(`/room/${room.id}`)}
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "12px 16px", background: "rgba(22, 27, 36, 0.5)", borderRadius: 8,
+                    padding: "16px 20px", background: "rgba(22, 27, 36, 0.5)", borderRadius: 10,
                     cursor: "pointer", border: "1px solid transparent", transition: "all 0.2s",
                   }}
                   onMouseOver={(e) => { e.currentTarget.style.borderColor = rv.color + "40"; e.currentTarget.style.background = "rgba(22, 27, 36, 0.8)"; }}
@@ -348,7 +348,7 @@ export default function Dashboard() {
                       animation: room.vibe === "breaking" ? "breakingPulse 2s infinite" : "none",
                     }}>{rv.label}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{room.title}</div>
+                      <div style={{ fontWeight: 600, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{room.title}</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                         {room.creator_name || "Unknown"}
                         {room.is_live ? (
