@@ -119,20 +119,6 @@ export default function Dashboard() {
             Drop in. Speak up. Be heard.
           </p>
 
-          {/* Hero mic image */}
-          <div style={{ marginBottom: 48, display: "flex", justifyContent: "center" }}>
-            <img
-              src="/hero-mic.png"
-              alt="Backchannel mic"
-              style={{
-                width: "clamp(180px, 40vw, 280px)",
-                height: "auto",
-                filter: "drop-shadow(0 0 40px rgba(250, 160, 20, 0.3))",
-                animation: "subtleFloat 4s ease-in-out infinite",
-              }}
-            />
-          </div>
-
           {isInAppBrowser ? (
             <div style={{ maxWidth: 380, margin: "0 auto" }}>
               <p style={{ color: "#f59f00", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>
