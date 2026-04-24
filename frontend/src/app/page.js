@@ -116,7 +116,7 @@ export default function Dashboard() {
             Backchannel
           </h1>
           <p style={{ color: "var(--text-muted)", marginBottom: 32, fontSize: "clamp(16px, 4.5vw, 20px)", fontWeight: 500, letterSpacing: "0.02em" }}>
-            Drop in. Speak up. No recordings.
+            Drop in. Speak up. Be heard.
           </p>
 
           {/* Equalizer waveform */}
