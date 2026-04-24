@@ -81,7 +81,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="container" style={{ textAlign: "center", marginTop: 160 }}>
+      <div className="container" style={{ textAlign: "center", marginTop: "min(160px, 20vh)" }}>
         <div style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading...</div>
       </div>
     );
@@ -92,7 +92,7 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div className="container" style={{ textAlign: "center", marginTop: 160, position: "relative" }}>
+      <div className="container" style={{ textAlign: "center", marginTop: "min(160px, 20vh)", position: "relative" }}>
         {/* Graffiti scattered text */}
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
           {["LIVE", "UNMUTED", "RAW", "TRUTH", "NO CAP", "ON AIR"].map((word, i) => (
@@ -111,7 +111,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <h1 style={{ fontSize: "clamp(48px, 14vw, 72px)", fontWeight: 900, letterSpacing: "-3px", marginBottom: 14, color: "#fff", textShadow: "0 0 40px rgba(59, 91, 219, 0.25)" }}>
+        <h1 style={{ fontSize: "clamp(48px, 14vw, 72px)", fontWeight: 900, letterSpacing: "-3px", marginBottom: 14, color: "#fff", textShadow: "0 0 30px rgba(250, 204, 21, 0.45), 0 0 60px rgba(250, 204, 21, 0.2)" }}>
           Backchannel
         </h1>
         <p style={{ color: "var(--text-muted)", marginBottom: 20, fontSize: "clamp(15px, 4vw, 18px)", fontWeight: 500 }}>
@@ -212,7 +212,7 @@ export default function Dashboard() {
       </div>
 
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: "clamp(28px, 6vw, 38px)", fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", textShadow: "0 0 30px rgba(59, 91, 219, 0.2)" }}>Backchannel</h1>
+        <h1 style={{ fontSize: "clamp(28px, 6vw, 38px)", fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", textShadow: "0 0 20px rgba(250, 204, 21, 0.4), 0 0 40px rgba(250, 204, 21, 0.15)" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             onClick={() => { setProfileName(user.displayName || ""); setProfilePhoto(user.photoURL || ""); setShowProfile(true); }}
@@ -221,9 +221,9 @@ export default function Dashboard() {
             onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
             {user.photoURL ? (
-              <img src={user.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)" }} />
+              <img src={user.photoURL} alt="" style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid var(--border)" }} />
             ) : (
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff" }}>
                 {(user.displayName || "?")[0].toUpperCase()}
               </div>
             )}
@@ -235,7 +235,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 28 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 20, marginBottom: 28 }}>
         {/* Create Room */}
         <div className="card">
           <h2 style={{ fontSize: 15, marginBottom: 14, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.02em" }}>Create a Room</h2>
@@ -407,9 +407,9 @@ export default function Dashboard() {
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 20 }}>Edit Profile</h2>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
               {profilePhoto ? (
-                <img src={profilePhoto} alt="" style={{ width: 72, height: 72, borderRadius: "50%", border: "2px solid var(--primary)" }} />
+                <img src={profilePhoto} alt="" style={{ width: 84, height: 84, borderRadius: "50%", border: "2px solid var(--primary)" }} />
               ) : (
-                <div style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700, color: "#fff" }}>
+                <div style={{ width: 84, height: 84, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 700, color: "#fff" }}>
                   {(profileName || "?")[0].toUpperCase()}
                 </div>
               )}

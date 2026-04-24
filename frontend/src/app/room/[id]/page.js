@@ -833,7 +833,7 @@ export default function RoomPage() {
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: "0.04em", textShadow: "0 0 20px rgba(59, 91, 219, 0.2)" }}>BACKCHANNEL</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: "0.04em", textShadow: "0 0 16px rgba(250, 204, 21, 0.4), 0 0 32px rgba(250, 204, 21, 0.15)" }}>BACKCHANNEL</span>
             {room?.vibe && VIBES[room.vibe] && (
               <span style={{
                 fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
@@ -1087,9 +1087,9 @@ export default function RoomPage() {
                   {msg.isAI ? (
                     <div style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>🧠</div>
                   ) : msg.photoURL ? (
-                    <img src={msg.photoURL} alt="" style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0 }} />
+                    <img src={msg.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }} />
                   ) : (
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
                       {(msg.sender || "?")[0].toUpperCase()}
                     </div>
                   )}
@@ -1122,7 +1122,7 @@ export default function RoomPage() {
             </div>
             <form onSubmit={sendChat} style={{ display: "flex", gap: 8 }}>
               <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a message... (/fact to fact-check)" style={{ flex: 1 }} />
-              <button className="btn-primary" type="submit" style={{ padding: "8px 16px", fontSize: 13 }}>Send</button>
+              <button className="btn-primary" type="submit" style={{ padding: "10px 20px", fontSize: 14, flexShrink: 0 }}>Send</button>
             </form>
           </div>
 
@@ -1194,16 +1194,16 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
         </div>
       ) : photoURL ? (
         <img src={photoURL} alt="" style={{
-          width: 44, height: 44, borderRadius: "50%", margin: "0 auto 8px", display: "block",
+          width: 52, height: 52, borderRadius: "50%", margin: "0 auto 8px", display: "block",
           border: isActive ? "2px solid var(--success)" : isSelf ? "2px solid var(--primary)" : "2px solid var(--border)",
           animation: isActive ? "speakPulse 1.2s infinite" : "none",
         }} />
       ) : (
         <div style={{
-          width: 44, height: 44, borderRadius: "50%",
+          width: 52, height: 52, borderRadius: "50%",
           background: isActive ? "linear-gradient(135deg, #2f9e44, #1a7a30)" : isSelf ? "linear-gradient(135deg, #3b5bdb, #2b4bc4)" : "var(--border)",
           display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px",
-          fontSize: 18, fontWeight: 700, color: "#fff",
+          fontSize: 20, fontWeight: 700, color: "#fff",
           animation: isActive ? "speakPulse 1.2s infinite" : "none", transition: "background 0.2s",
         }}>
           {(name || "?")[0].toUpperCase()}
