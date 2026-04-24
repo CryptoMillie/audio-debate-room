@@ -214,43 +214,66 @@ export default function RoomPage() {
       socketRef.current?.emit("signal", { targetSocketId, signal });
     });
 
-    peer.on("stream", (remoteStream) => {
+    // Helper to handle incoming media (used by both "stream" and "track" events)
+    const handleRemoteMedia = (remoteStream) => {
       const hasVideo = remoteStream.getVideoTracks().length > 0;
       const hasAudio = remoteStream.getAudioTracks().length > 0;
-      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio, ${remoteStream.getVideoTracks().length} video, id=${remoteStream.id}`);
+      console.log(`Got media: ${remoteStream.getAudioTracks().length} audio, ${remoteStream.getVideoTracks().length} video, id=${remoteStream.id}`);
 
       // Play audio — use stream ID so multiple streams (mic + screen share) can play simultaneously
       if (hasAudio) {
         const audioElId = `audio-${targetSocketId}-${remoteStream.id}`;
         const existing = document.getElementById(audioElId);
-        if (existing) existing.remove();
+        if (!existing) {
+          const audio = document.createElement("audio");
+          audio.id = audioElId;
+          audio.setAttribute("playsinline", "");
+          audio.volume = 1.0;
+          document.body.appendChild(audio);
+          audio.srcObject = remoteStream;
 
-        const audio = document.createElement("audio");
-        audio.id = audioElId;
-        audio.setAttribute("playsinline", "");
-        audio.volume = 1.0;
-        document.body.appendChild(audio);
-        audio.srcObject = remoteStream;
-
-        let retries = 0;
-        const tryPlay = () => {
-          audio.play().then(() => console.log(`Audio playing (${audioElId})!`))
-            .catch((e) => { if (retries < 10) { retries++; setTimeout(tryPlay, 300); } });
-        };
-        tryPlay();
-
-        // Clean up audio element when stream tracks end
-        remoteStream.getAudioTracks().forEach((track) => {
-          track.onended = () => {
-            const el = document.getElementById(audioElId);
-            if (el) el.remove();
+          let retries = 0;
+          const tryPlay = () => {
+            audio.play().then(() => console.log(`Audio playing (${audioElId})!`))
+              .catch((e) => { if (retries < 10) { retries++; setTimeout(tryPlay, 300); } });
           };
-        });
+          tryPlay();
+
+          // Clean up audio element when stream tracks end
+          remoteStream.getAudioTracks().forEach((track) => {
+            track.onended = () => {
+              const el = document.getElementById(audioElId);
+              if (el) el.remove();
+            };
+          });
+        }
       }
 
       // Handle video track if present
       if (hasVideo) {
         setRemoteVideos((prev) => ({ ...prev, [targetSocketId]: remoteStream }));
+      }
+    };
+
+    peer.on("stream", (remoteStream) => {
+      handleRemoteMedia(remoteStream);
+    });
+
+    // "track" event fires reliably for dynamically added tracks (camera/screen share toggled mid-session)
+    peer.on("track", (track, stream) => {
+      console.log(`Got track: kind=${track.kind}, streamId=${stream.id}`);
+      handleRemoteMedia(stream);
+
+      // When a video track ends (camera/screen share stopped), remove from remoteVideos
+      if (track.kind === "video") {
+        track.onended = () => {
+          setRemoteVideos((prev) => {
+            const updated = { ...prev };
+            // Only remove if this stream is still the current one for this peer
+            if (updated[targetSocketId]?.id === stream.id) delete updated[targetSocketId];
+            return updated;
+          });
+        };
       }
     });
 
