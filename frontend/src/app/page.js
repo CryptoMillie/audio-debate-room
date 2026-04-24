@@ -119,19 +119,18 @@ export default function Dashboard() {
             Drop in. Speak up. Be heard.
           </p>
 
-          {/* Equalizer waveform */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 48, height: 40, alignItems: "center" }}>
-            {[0.3, 0.7, 0.5, 1.0, 0.4, 0.8, 0.6, 1.0, 0.3, 0.9, 0.5, 0.7, 0.4, 0.8, 0.6, 0.3, 0.9, 0.5, 0.7, 0.4].map((delay, i) => (
-              <div key={i} style={{
-                width: 2.5,
-                height: `${12 + Math.sin(i * 0.8) * 12 + 8}px`,
-                background: `rgba(59, 91, 219, ${0.3 + Math.sin(i * 0.6) * 0.2})`,
-                borderRadius: 2,
-                animation: `eqBar ${1.0 + delay * 0.5}s ease-in-out infinite`,
-                animationDelay: `${delay * 0.25}s`,
-                transformOrigin: "center",
-              }} />
-            ))}
+          {/* Hero mic image */}
+          <div style={{ marginBottom: 48, display: "flex", justifyContent: "center" }}>
+            <img
+              src="/hero-mic.png"
+              alt="Backchannel mic"
+              style={{
+                width: "clamp(180px, 40vw, 280px)",
+                height: "auto",
+                filter: "drop-shadow(0 0 40px rgba(250, 160, 20, 0.3))",
+                animation: "subtleFloat 4s ease-in-out infinite",
+              }}
+            />
           </div>
 
           {isInAppBrowser ? (

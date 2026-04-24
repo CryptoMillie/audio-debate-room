@@ -2,8 +2,20 @@ import { AuthProvider } from "@/lib/AuthContext";
 import "./globals.css";
 
 export const metadata = {
+  metadataBase: new URL("https://dabackchannel.xyz"),
   title: "Backchannel",
-  description: "Real-time audio rooms",
+  description: "Drop in. Speak up. Be heard.",
+  openGraph: {
+    title: "Backchannel",
+    description: "Drop in. Speak up. Be heard.",
+    images: [{ url: "/hero-mic.png", width: 512, height: 512 }],
+  },
+  twitter: {
+    card: "summary",
+    title: "Backchannel",
+    description: "Drop in. Speak up. Be heard.",
+    images: ["/hero-mic.png"],
+  },
 };
 
 export default function RootLayout({ children }) {
