@@ -217,15 +217,16 @@ export default function RoomPage() {
     peer.on("stream", (remoteStream) => {
       const hasVideo = remoteStream.getVideoTracks().length > 0;
       const hasAudio = remoteStream.getAudioTracks().length > 0;
-      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio, ${remoteStream.getVideoTracks().length} video`);
+      console.log(`Got stream: ${remoteStream.getAudioTracks().length} audio, ${remoteStream.getVideoTracks().length} video, id=${remoteStream.id}`);
 
-      // Always handle audio
+      // Play audio — use stream ID so multiple streams (mic + screen share) can play simultaneously
       if (hasAudio) {
-        const existing = document.getElementById(`audio-${targetSocketId}`);
+        const audioElId = `audio-${targetSocketId}-${remoteStream.id}`;
+        const existing = document.getElementById(audioElId);
         if (existing) existing.remove();
 
         const audio = document.createElement("audio");
-        audio.id = `audio-${targetSocketId}`;
+        audio.id = audioElId;
         audio.setAttribute("playsinline", "");
         audio.volume = 1.0;
         document.body.appendChild(audio);
@@ -233,10 +234,18 @@ export default function RoomPage() {
 
         let retries = 0;
         const tryPlay = () => {
-          audio.play().then(() => console.log("Audio playing!"))
+          audio.play().then(() => console.log(`Audio playing (${audioElId})!`))
             .catch((e) => { if (retries < 10) { retries++; setTimeout(tryPlay, 300); } });
         };
         tryPlay();
+
+        // Clean up audio element when stream tracks end
+        remoteStream.getAudioTracks().forEach((track) => {
+          track.onended = () => {
+            const el = document.getElementById(audioElId);
+            if (el) el.remove();
+          };
+        });
       }
 
       // Handle video track if present
@@ -252,8 +261,8 @@ export default function RoomPage() {
 
     peer.on("close", () => {
       console.log("Peer closed");
-      const audioEl = document.getElementById(`audio-${targetSocketId}`);
-      if (audioEl) audioEl.remove();
+      // Remove all audio elements for this peer
+      document.querySelectorAll(`[id^="audio-${targetSocketId}-"]`).forEach((el) => el.remove());
       delete peersRef.current[targetSocketId];
       setPeerStatus((prev) => { const n = { ...prev }; delete n[targetSocketId]; return n; });
       setRemoteVideos((prev) => { const n = { ...prev }; delete n[targetSocketId]; return n; });
@@ -263,8 +272,8 @@ export default function RoomPage() {
     peer.on("error", (err) => {
       console.log(`Peer ERROR: ${err.message}`);
       setPeerStatus((prev) => ({ ...prev, [targetSocketId]: "failed" }));
-      const audioEl = document.getElementById(`audio-${targetSocketId}`);
-      if (audioEl) audioEl.remove();
+      // Remove all audio elements for this peer
+      document.querySelectorAll(`[id^="audio-${targetSocketId}-"]`).forEach((el) => el.remove());
       if (peersRef.current[targetSocketId] && !peersRef.current[targetSocketId].destroyed) {
         peersRef.current[targetSocketId].destroy();
       }
@@ -368,8 +377,8 @@ export default function RoomPage() {
         const peer = peersRef.current[socketId];
         if (peer && !peer.destroyed) peer.destroy();
         delete peersRef.current[socketId];
-        const audioEl = document.getElementById(`audio-${socketId}`);
-        if (audioEl) audioEl.remove();
+        // Remove all audio elements for this peer
+        document.querySelectorAll(`[id^="audio-${socketId}-"]`).forEach((el) => el.remove());
         setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
         setPeerStatus((prev) => { const n = { ...prev }; delete n[socketId]; return n; });
       });
@@ -520,16 +529,17 @@ export default function RoomPage() {
 
   const toggleVideo = useCallback(async () => {
     if (videoEnabled) {
-      // Stop video
+      // Stop video — remove track from all peers via SimplePeer API
       if (videoStreamRef.current) {
-        videoStreamRef.current.getVideoTracks().forEach((t) => t.stop());
-        // Remove video track from all peers
+        const tracks = videoStreamRef.current.getTracks();
         Object.values(peersRef.current).forEach((peer) => {
           if (peer && !peer.destroyed) {
-            const sender = peer._pc?.getSenders?.()?.find((s) => s.track?.kind === "video");
-            if (sender) peer._pc.removeTrack(sender);
+            tracks.forEach((track) => {
+              try { peer.removeTrack(track, videoStreamRef.current); } catch (e) {}
+            });
           }
         });
+        tracks.forEach((t) => t.stop());
         videoStreamRef.current = null;
       }
       setSelfVideoStream(null);
@@ -543,11 +553,11 @@ export default function RoomPage() {
         videoStreamRef.current = vidStream;
         setSelfVideoStream(vidStream);
         setVideoEnabled(true);
-        // Add video track to all peers
+        // Add video track to all peers via SimplePeer API (triggers renegotiation)
         const videoTrack = vidStream.getVideoTracks()[0];
         Object.values(peersRef.current).forEach((peer) => {
-          if (peer && !peer.destroyed && peer._pc) {
-            peer._pc.addTrack(videoTrack, vidStream);
+          if (peer && !peer.destroyed) {
+            try { peer.addTrack(videoTrack, vidStream); } catch (e) { console.error("addTrack failed:", e); }
           }
         });
         socketRef.current?.emit("user-video-toggle", { roomId, videoEnabled: true });
@@ -559,9 +569,17 @@ export default function RoomPage() {
 
   const toggleScreenShare = useCallback(async () => {
     if (screenSharing) {
-      // Stop screen share
+      // Stop screen share — remove all tracks from peers via SimplePeer API
       if (videoStreamRef.current) {
-        videoStreamRef.current.getTracks().forEach((t) => t.stop());
+        const tracks = videoStreamRef.current.getTracks();
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer && !peer.destroyed) {
+            tracks.forEach((track) => {
+              try { peer.removeTrack(track, videoStreamRef.current); } catch (e) {}
+            });
+          }
+        });
+        tracks.forEach((t) => t.stop());
         videoStreamRef.current = null;
       }
       setSelfVideoStream(null);
@@ -576,9 +594,27 @@ export default function RoomPage() {
         setScreenSharing(true);
         setVideoEnabled(false); // Screen share replaces camera
 
-        const videoTrack = screenStream.getVideoTracks()[0];
+        // Add ALL tracks (video + audio) to peers via SimplePeer API (triggers renegotiation)
+        const allTracks = screenStream.getTracks();
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer && !peer.destroyed) {
+            allTracks.forEach((track) => {
+              try { peer.addTrack(track, screenStream); } catch (e) { console.error("addTrack failed:", e); }
+            });
+          }
+        });
+
         // Auto-stop when user clicks "Stop sharing" in browser UI
-        videoTrack.onended = () => {
+        screenStream.getVideoTracks()[0].onended = () => {
+          const tracks = screenStream.getTracks();
+          Object.values(peersRef.current).forEach((peer) => {
+            if (peer && !peer.destroyed) {
+              tracks.forEach((track) => {
+                try { peer.removeTrack(track, screenStream); } catch (e) {}
+              });
+            }
+          });
+          tracks.forEach((t) => t.stop());
           setScreenSharing(false);
           setSelfVideoStream(null);
           setScreenShareInfo(null);
@@ -586,16 +622,6 @@ export default function RoomPage() {
           socketRef.current?.emit("user-screen-share", { roomId, screenSharing: false });
         };
 
-        Object.values(peersRef.current).forEach((peer) => {
-          if (peer && !peer.destroyed && peer._pc) {
-            const existingSender = peer._pc.getSenders?.()?.find((s) => s.track?.kind === "video");
-            if (existingSender) {
-              existingSender.replaceTrack(videoTrack);
-            } else {
-              peer._pc.addTrack(videoTrack, screenStream);
-            }
-          }
-        });
         socketRef.current?.emit("user-screen-share", { roomId, screenSharing: true, displayName: user.displayName });
       } catch (e) {
         console.error("Screen share failed:", e);
@@ -764,7 +790,7 @@ export default function RoomPage() {
               IN ROOM ({participants.length + 1})
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
-              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} videoStream={videoEnabled && selfVideoStream && !screenSharing ? selfVideoStream : null} />
+              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} videoStream={videoEnabled && selfVideoStream && !screenSharing ? selfVideoStream : null} reactions={reactions.filter((r) => r.targetUserId === user.uid)} />
               {participants.map((p) => (
                 <ParticipantCard
                   key={p.socketId}
