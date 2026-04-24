@@ -159,6 +159,68 @@ router.get("/rooms", async (_req, res) => {
   }
 });
 
+// GET /rooms-discovery — Discovery feed with live counts, sorting, filtering
+router.get("/rooms-discovery", async (req, res) => {
+  try {
+    const db = await getDb();
+    const result = db.exec(`
+      SELECT r.*, u.display_name as creator_name,
+        (SELECT COUNT(*) FROM room_participants WHERE room_id = r.id) as participant_count
+      FROM rooms r
+      LEFT JOIN users u ON u.id = r.created_by
+      ORDER BY r.created_at DESC
+    `);
+
+    const dbRooms = [];
+    if (result.length > 0) {
+      const cols = result[0].columns;
+      result[0].values.forEach((row) => {
+        const room = {};
+        cols.forEach((col, i) => { room[col] = row[i]; });
+        dbRooms.push(room);
+      });
+    }
+
+    // Merge live counts from socket state
+    const roomCounts = req.app.locals.getRoomCounts ? req.app.locals.getRoomCounts() : {};
+    const enriched = dbRooms.map((room) => {
+      const live = roomCounts[room.id] || { speakers: 0, listeners: 0, total: 0 };
+      return {
+        ...room,
+        live_speakers: live.speakers,
+        live_listeners: live.listeners,
+        live_total: live.total,
+        is_live: live.total > 0,
+      };
+    });
+
+    // Sort: live rooms first (by total DESC), then non-live by created_at
+    enriched.sort((a, b) => {
+      if (a.is_live && !b.is_live) return -1;
+      if (!a.is_live && b.is_live) return 1;
+      if (a.is_live && b.is_live) return b.live_total - a.live_total;
+      return 0;
+    });
+
+    // Optional filters
+    const vibeFilter = req.query.vibe;
+    const searchFilter = req.query.search;
+    let filtered = enriched;
+    if (vibeFilter && vibeFilter !== "all") {
+      filtered = filtered.filter((r) => r.vibe === vibeFilter);
+    }
+    if (searchFilter) {
+      const lower = searchFilter.toLowerCase();
+      filtered = filtered.filter((r) => r.title.toLowerCase().includes(lower));
+    }
+
+    res.json(filtered);
+  } catch (err) {
+    console.error("rooms-discovery error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // DELETE /rooms/:id — Delete a room (creator only)
 router.delete("/rooms/:id", async (req, res) => {
   try {

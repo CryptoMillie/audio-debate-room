@@ -3,7 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const routes = require("./routes");
-const { setupSocket, getActiveUserCount } = require("./socket");
+const { setupSocket, getActiveUserCount, getRoomCounts } = require("./socket");
 const { getDb } = require("./db");
 
 const app = express();
@@ -39,8 +39,11 @@ app.get("/", (_req, res) => {
 
 // Stats endpoint
 app.get("/api/stats", (_req, res) => {
-  res.json({ activeUsers: getActiveUserCount() });
+  res.json({ activeUsers: getActiveUserCount(), roomCounts: getRoomCounts() });
 });
+
+// Expose getRoomCounts to route handlers
+app.locals.getRoomCounts = getRoomCounts;
 
 // TURN credential endpoint — fetches temporary TURN credentials
 app.get("/api/turn-credentials", async (_req, res) => {

@@ -114,6 +114,10 @@ export default function RoomPage() {
   const [screenShareInfo, setScreenShareInfo] = useState(null); // { socketId, displayName, stream }
   const [micVolume, setMicVolume] = useState(1.0);
   const [mediaVolume, setMediaVolume] = useState(0.5);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [joinRole, setJoinRole] = useState(null); // null | "speaker" | "listener"
+  const [floorMode, setFloorMode] = useState("open"); // "open" | "moderated"
 
   const peersRef = useRef({});
   const streamRef = useRef(null);
@@ -125,6 +129,10 @@ export default function RoomPage() {
   const iceServersRef = useRef(null);
   const gainNodeRef = useRef(null);
   const mediaVolumeRef = useRef(0.5);
+  const mediaRecorderRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const recordingCtxRef = useRef(null);
 
   const cleanupPeers = useCallback(() => {
     Object.values(peersRef.current).forEach((peer) => {
@@ -136,6 +144,14 @@ export default function RoomPage() {
 
   const cleanup = useCallback(() => {
     cleanupPeers();
+    // Stop recording if active
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    if (recordingCtxRef.current) { recordingCtxRef.current.close(); recordingCtxRef.current = null; }
+    setIsRecording(false);
+    setRecordingTime(0);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -328,7 +344,7 @@ export default function RoomPage() {
       .catch((err) => setError(err.message));
   }, [roomId, user, loading]);
 
-  const joinVoice = useCallback(async () => {
+  const joinVoice = useCallback(async (role) => {
     if (!user) return;
 
     try {
@@ -353,24 +369,38 @@ export default function RoomPage() {
         ];
       }
 
-      // Get mic and route through GainNode for volume control
-      const rawMicStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: false,
-      });
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(rawMicStream);
-      const gainNode = audioCtx.createGain();
-      gainNode.gain.value = micVolume;
-      gainNodeRef.current = gainNode;
-      const dest = audioCtx.createMediaStreamDestination();
-      source.connect(gainNode);
-      gainNode.connect(dest);
-      const stream = dest.stream;
-      streamRef.current = stream;
-      // Keep raw mic ref so we can stop hardware tracks on cleanup
-      streamRef.rawMic = rawMicStream;
-      startSpeakingDetection(rawMicStream);
+      let stream;
+      if (role === "listener") {
+        // Listeners don't send audio — create a silent stream for peer connections
+        const silentCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = silentCtx.createOscillator();
+        const gain = silentCtx.createGain();
+        gain.gain.value = 0;
+        const silentDest = silentCtx.createMediaStreamDestination();
+        oscillator.connect(gain);
+        gain.connect(silentDest);
+        oscillator.start();
+        stream = silentDest.stream;
+        streamRef.current = stream;
+      } else {
+        // Speaker — get mic and route through GainNode for volume control
+        const rawMicStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false,
+        });
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(rawMicStream);
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = micVolume;
+        gainNodeRef.current = gainNode;
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(gainNode);
+        gainNode.connect(dest);
+        stream = dest.stream;
+        streamRef.current = stream;
+        streamRef.rawMic = rawMicStream;
+        startSpeakingDetection(rawMicStream);
+      }
 
       // Socket setup — remove old listeners first
       const socket = getSocket();
@@ -388,6 +418,7 @@ export default function RoomPage() {
           displayName: user.displayName || user.email,
           photoURL: user.photoURL || null,
           createdBy: room?.created_by || null,
+          role: role,
         });
       });
 
@@ -521,6 +552,20 @@ export default function RoomPage() {
         }
       });
 
+      // Floor mode & role change listeners
+      socket.on("floor-mode", ({ mode }) => {
+        setFloorMode(mode);
+      });
+
+      socket.on("role-changed", ({ userId: uid, socketId: sid, role: newRole }) => {
+        // Update participant role
+        setParticipants((prev) => prev.map((p) => p.userId === uid ? { ...p, role: newRole } : p));
+        // If it's us being promoted/demoted
+        if (uid === user.uid) {
+          setJoinRole(newRole);
+        }
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`Socket disconnected: ${reason}`);
       });
@@ -533,6 +578,13 @@ export default function RoomPage() {
   }, [user, roomId, room, createPeer, startSpeakingDetection, cleanup, router]);
 
   useEffect(() => cleanup, [cleanup]);
+
+  // Trigger joinVoice when role is selected
+  useEffect(() => {
+    if (joinRole && !connected) {
+      joinVoice(joinRole);
+    }
+  }, [joinRole]);
 
   // Sync mic gain when slider changes
   useEffect(() => {
@@ -688,6 +740,65 @@ export default function RoomPage() {
     }
   }, [screenSharing, roomId, user]);
 
+  const startRecording = useCallback(() => {
+    try {
+      const mixCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = mixCtx.createMediaStreamDestination();
+      recordingCtxRef.current = mixCtx;
+
+      // Mix own mic
+      if (streamRef.rawMic) {
+        const micSource = mixCtx.createMediaStreamSource(streamRef.rawMic);
+        micSource.connect(dest);
+      }
+
+      // Mix all remote audio
+      document.querySelectorAll('[id^="audio-"]').forEach((audioEl) => {
+        if (audioEl.srcObject) {
+          try {
+            const remoteSource = mixCtx.createMediaStreamSource(audioEl.srcObject);
+            remoteSource.connect(dest);
+          } catch (e) { /* stream may already be ended */ }
+        }
+      });
+
+      const recorder = new MediaRecorder(dest.stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus" : "audio/webm",
+      });
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `backchannel-${roomId}-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        recordingChunksRef.current = [];
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(1000);
+
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+      setIsRecording(true);
+    } catch (e) {
+      console.error("Recording failed:", e);
+    }
+  }, [roomId]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    if (recordingCtxRef.current) { recordingCtxRef.current.close(); recordingCtxRef.current = null; }
+    setIsRecording(false);
+    setRecordingTime(0);
+  }, []);
+
   const isCreator = room?.created_by === user?.uid;
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -777,55 +888,84 @@ export default function RoomPage() {
       {!connected ? (
         <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
           <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.15 }}><MicOnIcon size={48} /></div>
-          <p style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 14 }}>Ready to join?</p>
-          <button className="btn-primary" onClick={joinVoice} style={{ fontSize: 15, padding: "14px 40px", borderRadius: 8 }}>
-            Join Voice
-          </button>
+          {!joinRole ? (
+            <>
+              <p style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 14 }}>How do you want to join?</p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn-primary" onClick={() => { setJoinRole("speaker"); }} style={{ fontSize: 15, padding: "14px 32px", borderRadius: 8 }}>
+                  Join Voice
+                </button>
+                <button className="btn-outline" onClick={() => { setJoinRole("listener"); }} style={{ fontSize: 15, padding: "14px 32px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                  Listen Only
+                </button>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Connecting as {joinRole}...</p>
+          )}
         </div>
       ) : (
         <>
           {/* Media Controls */}
           <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 16, padding: "16px" }}>
+            {joinRole === "listener" && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Listening mode — you are muted</div>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              {joinRole !== "listener" && (
+                <button
+                  onClick={toggleMute}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "10px 20px",
+                    background: muted ? "transparent" : "var(--primary)",
+                    border: muted ? "1px solid rgba(224, 49, 49, 0.3)" : "none",
+                    color: muted ? "var(--danger)" : "#fff", borderRadius: 8, fontSize: 12,
+                  }}
+                >
+                  {muted ? <><MicOffIcon /> Unmute</> : <><MicOnIcon /> Mute</>}
+                </button>
+              )}
+              {joinRole !== "listener" && (
+                <>
+                  <button
+                    onClick={toggleVideo}
+                    className={`media-btn${videoEnabled ? " active" : ""}`}
+                    title={videoEnabled ? "Turn off camera" : "Turn on camera"}
+                  >
+                    <VideoIcon /> {videoEnabled ? "Cam On" : "Cam"}
+                  </button>
+                  <button
+                    onClick={toggleScreenShare}
+                    className={`media-btn${screenSharing ? " screen-active" : ""}`}
+                    title={screenSharing ? "Stop sharing" : "Share screen"}
+                  >
+                    <ScreenIcon /> {screenSharing ? "Sharing" : "Screen"}
+                  </button>
+                </>
+              )}
               <button
-                onClick={toggleMute}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "10px 20px",
-                  background: muted ? "transparent" : "var(--primary)",
-                  border: muted ? "1px solid rgba(224, 49, 49, 0.3)" : "none",
-                  color: muted ? "var(--danger)" : "#fff", borderRadius: 8, fontSize: 12,
-                }}
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`media-btn${isRecording ? " recording-active" : ""}`}
+                title={isRecording ? "Stop recording" : "Record audio"}
               >
-                {muted ? <><MicOffIcon /> Unmute</> : <><MicOnIcon /> Mute</>}
-              </button>
-              <button
-                onClick={toggleVideo}
-                className={`media-btn${videoEnabled ? " active" : ""}`}
-                title={videoEnabled ? "Turn off camera" : "Turn on camera"}
-              >
-                <VideoIcon /> {videoEnabled ? "Cam On" : "Cam"}
-              </button>
-              <button
-                onClick={toggleScreenShare}
-                className={`media-btn${screenSharing ? " screen-active" : ""}`}
-                title={screenSharing ? "Stop sharing" : "Share screen"}
-              >
-                <ScreenIcon /> {screenSharing ? "Sharing" : "Screen"}
+                <RecordIcon /> {isRecording ? `${Math.floor(recordingTime / 60)}:${(recordingTime % 60).toString().padStart(2, "0")}` : "Record"}
               </button>
             </div>
             {/* Volume Sliders */}
             <div className="volume-controls">
-              <div className="volume-row">
-                <MicOnIcon />
-                <span className="volume-label">Mic</span>
-                <input
-                  type="range" min="0" max="1" step="0.01"
-                  value={micVolume}
-                  onChange={(e) => setMicVolume(parseFloat(e.target.value))}
-                  className="volume-slider mic-slider"
-                />
-                <span className="volume-value">{Math.round(micVolume * 100)}%</span>
-              </div>
+              {joinRole !== "listener" && (
+                <div className="volume-row">
+                  <MicOnIcon />
+                  <span className="volume-label">Mic</span>
+                  <input
+                    type="range" min="0" max="1" step="0.01"
+                    value={micVolume}
+                    onChange={(e) => setMicVolume(parseFloat(e.target.value))}
+                    className="volume-slider mic-slider"
+                  />
+                  <span className="volume-value">{Math.round(micVolume * 100)}%</span>
+                </div>
+              )}
               <div className="volume-row">
                 <SpeakerIcon />
                 <span className="volume-label">Media</span>
@@ -838,16 +978,36 @@ export default function RoomPage() {
                 <span className="volume-value">{Math.round(mediaVolume * 100)}%</span>
               </div>
             </div>
+            {/* Host Floor Mode Toggle */}
+            {isCreator && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Floor:</span>
+                <button
+                  onClick={() => {
+                    const newMode = floorMode === "open" ? "moderated" : "open";
+                    socketRef.current?.emit("set-floor-mode", { roomId, mode: newMode });
+                  }}
+                  className={`media-btn${floorMode === "moderated" ? " active" : ""}`}
+                  style={{ padding: "4px 12px", fontSize: 11 }}
+                >
+                  {floorMode === "open" ? "Open Floor" : "Moderated"}
+                </button>
+              </div>
+            )}
             {participants.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {connectedPeers > 0 && (
-                  <span style={{ color: "var(--success)" }}>{connectedPeers} connected</span>
-                )}
+                {(() => {
+                  const speakerCount = participants.filter((p) => p.role !== "listener").length + (joinRole === "speaker" ? 1 : 0);
+                  const listenerCount = participants.filter((p) => p.role === "listener").length + (joinRole === "listener" ? 1 : 0);
+                  return (
+                    <>
+                      <span style={{ color: "var(--success)" }}>{speakerCount} speaking</span>
+                      {listenerCount > 0 && <span style={{ marginLeft: 8 }}>{listenerCount} listening</span>}
+                    </>
+                  );
+                })()}
                 {failedPeers > 0 && (
-                  <span style={{ color: "var(--danger)", marginLeft: connectedPeers > 0 ? 8 : 0 }}>{failedPeers} failed</span>
-                )}
-                {connectedPeers === 0 && failedPeers === 0 && (
-                  <span>Connecting...</span>
+                  <span style={{ color: "var(--danger)", marginLeft: 8 }}>{failedPeers} failed</span>
                 )}
               </div>
             )}
@@ -874,7 +1034,7 @@ export default function RoomPage() {
               IN ROOM ({participants.length + 1})
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 10 }}>
-              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} videoStream={videoEnabled && selfVideoStream && !screenSharing ? selfVideoStream : null} reactions={reactions.filter((r) => r.targetUserId === user.uid)} />
+              <ParticipantCard name={user.displayName || "You"} photoURL={user.photoURL} isSelf muted={muted} speaking={speaking && !muted} videoStream={videoEnabled && selfVideoStream && !screenSharing ? selfVideoStream : null} reactions={reactions.filter((r) => r.targetUserId === user.uid)} role={joinRole} />
               {participants.map((p) => (
                 <ParticipantCard
                   key={p.socketId}
@@ -888,6 +1048,9 @@ export default function RoomPage() {
                   onReaction={(type) => sendReaction(p.userId, type)}
                   reactions={reactions.filter((r) => r.targetUserId === p.userId)}
                   videoStream={remoteVideos[p.socketId] || null}
+                  role={p.role}
+                  onPromote={isCreator && p.role === "listener" ? () => socketRef.current?.emit("promote-to-speaker", { roomId, targetUserId: p.userId }) : null}
+                  onDemote={isCreator && p.role !== "listener" ? () => socketRef.current?.emit("demote-to-listener", { roomId, targetUserId: p.userId }) : null}
                 />
               ))}
             </div>
@@ -984,7 +1147,7 @@ function VideoElement({ stream, className, muted: isMuted }) {
   return <video ref={videoRef} autoPlay playsInline muted={isMuted} className={className} />;
 }
 
-function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [], videoStream }) {
+function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNew, connectionStatus, isCreator, onKick, onReaction, reactions = [], videoStream, role, onPromote, onDemote }) {
   const isActive = speaking && !muted;
   const hasVideo = videoStream && videoStream.getVideoTracks().length > 0;
   const [expanded, setExpanded] = useState(false);
@@ -1049,8 +1212,9 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
       <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}
       </div>
-      {isSelf && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>You</div>}
-      {isSelf && muted && <div style={{ fontSize: 10, color: "var(--danger)", marginTop: 4 }}>Muted</div>}
+      {isSelf && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>You{role === "listener" ? " (Listener)" : ""}</div>}
+      {role === "listener" && !isSelf && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Listener</div>}
+      {isSelf && muted && role !== "listener" && <div style={{ fontSize: 10, color: "var(--danger)", marginTop: 4 }}>Muted</div>}
       {isActive && <div style={{ fontSize: 10, color: "var(--success)", marginTop: 4, animation: "glowPulse 1.5s infinite" }}>Speaking</div>}
       {!isSelf && connectionStatus === "connecting" && (
         <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>Connecting...</div>
@@ -1080,16 +1244,28 @@ function ParticipantCard({ name, photoURL, userId, isSelf, muted, speaking, isNe
         </div>
       )}
 
-      {/* Kick button (creator only, non-self) */}
-      {!isSelf && isCreator && onKick && (
-        <button
-          onClick={onKick}
-          title="Kick user"
-          style={{
-            marginTop: 6, background: "rgba(224, 49, 49, 0.1)", border: "1px solid rgba(224, 49, 49, 0.2)",
-            borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "var(--danger)", cursor: "pointer",
-          }}
-        >Kick</button>
+      {/* Host controls (promote/demote/kick) */}
+      {!isSelf && isCreator && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+          {onPromote && (
+            <button onClick={onPromote} title="Promote to speaker" style={{
+              background: "rgba(47, 158, 68, 0.1)", border: "1px solid rgba(47, 158, 68, 0.2)",
+              borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "var(--success)", cursor: "pointer",
+            }}>Speak</button>
+          )}
+          {onDemote && (
+            <button onClick={onDemote} title="Move to listener" style={{
+              background: "rgba(59, 91, 219, 0.1)", border: "1px solid rgba(59, 91, 219, 0.2)",
+              borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "var(--primary)", cursor: "pointer",
+            }}>Listen</button>
+          )}
+          {onKick && (
+            <button onClick={onKick} title="Kick user" style={{
+              background: "rgba(224, 49, 49, 0.1)", border: "1px solid rgba(224, 49, 49, 0.2)",
+              borderRadius: 6, padding: "2px 8px", fontSize: 10, color: "var(--danger)", cursor: "pointer",
+            }}>Kick</button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1143,6 +1319,14 @@ function SpeakerIcon() {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  );
+}
+
+function RecordIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="6" fill="currentColor" />
     </svg>
   );
 }

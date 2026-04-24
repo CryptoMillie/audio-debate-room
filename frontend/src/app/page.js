@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
-import { createRoom, listRooms, deleteRoom, getStats } from "@/lib/api";
+import { createRoom, listRooms, deleteRoom, getStats, listRoomsDiscovery } from "@/lib/api";
 
 const VIBES = {
   chill: { color: "#6c5ce7", label: "CHILL" },
@@ -47,6 +47,10 @@ export default function Dashboard() {
   const [profilePhoto, setProfilePhoto] = useState("");
   const [uploading, setUploading] = useState(false);
   const [activeUsers, setActiveUsers] = useState(0);
+  const [discoveryRooms, setDiscoveryRooms] = useState([]);
+  const [vibeFilter, setVibeFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -58,6 +62,22 @@ export default function Dashboard() {
       listRooms().then(setRooms).catch(console.error);
     }
   }, [user]);
+
+  // Discovery feed with polling
+  const fetchDiscovery = useCallback(() => {
+    if (!user) return;
+    setDiscoveryLoading(true);
+    listRoomsDiscovery(vibeFilter, searchQuery)
+      .then(setDiscoveryRooms)
+      .catch(console.error)
+      .finally(() => setDiscoveryLoading(false));
+  }, [user, vibeFilter, searchQuery]);
+
+  useEffect(() => {
+    fetchDiscovery();
+    const interval = setInterval(fetchDiscovery, 10000);
+    return () => clearInterval(interval);
+  }, [fetchDiscovery]);
 
   if (loading) {
     return (
@@ -267,50 +287,80 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Room List */}
+      {/* Room Discovery Feed */}
       <div className="card">
-        <h2 style={{ fontSize: 14, marginBottom: 16, color: "var(--text-muted)", fontWeight: 500 }}>Active Rooms</h2>
-        {rooms.length === 0 ? (
+        <h2 style={{ fontSize: 14, marginBottom: 12, color: "var(--text-muted)", fontWeight: 500 }}>Discover Rooms</h2>
+
+        {/* Search */}
+        <input
+          placeholder="Search rooms..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+
+        {/* Vibe filter tabs */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+          {[{ key: "all", label: "ALL", color: "#fff" }, ...Object.entries(VIBES).map(([k, v]) => ({ key: k, label: v.label, color: v.color }))].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setVibeFilter(tab.key)}
+              style={{
+                padding: "4px 12px", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+                background: vibeFilter === tab.key ? (tab.key === "all" ? "rgba(255,255,255,0.1)" : tab.color) : "transparent",
+                color: vibeFilter === tab.key ? "#fff" : (tab.key === "all" ? "var(--text-muted)" : tab.color),
+                border: `1px solid ${tab.key === "all" ? "var(--border)" : tab.color}`,
+                borderRadius: 12,
+                opacity: vibeFilter === tab.key ? 1 : 0.6,
+                transition: "all 0.2s",
+              }}
+            >{tab.label}</button>
+          ))}
+        </div>
+
+        {/* Room list */}
+        {discoveryRooms.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
-            No rooms yet. Create one to get started.
+            {discoveryLoading ? "Loading..." : "No rooms found."}
           </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {rooms.map((room) => {
+            {discoveryRooms.map((room) => {
               const rv = VIBES[room.vibe] || VIBES.chill;
               return (
                 <div
                   key={room.id}
                   onClick={() => router.push(`/room/${room.id}`)}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "12px 16px",
-                    background: "rgba(22, 27, 36, 0.5)",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    border: "1px solid transparent",
-                    transition: "all 0.2s",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "12px 16px", background: "rgba(22, 27, 36, 0.5)", borderRadius: 8,
+                    cursor: "pointer", border: "1px solid transparent", transition: "all 0.2s",
                   }}
                   onMouseOver={(e) => { e.currentTarget.style.borderColor = rv.color + "40"; e.currentTarget.style.background = "rgba(22, 27, 36, 0.8)"; }}
                   onMouseOut={(e) => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "rgba(22, 27, 36, 0.5)"; }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    {room.is_live && <span className="live-badge">LIVE</span>}
                     <span style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: rv.color + "20",
-                      color: rv.color,
-                      letterSpacing: "0.05em",
+                      fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                      background: rv.color + "20", color: rv.color, letterSpacing: "0.05em", flexShrink: 0,
                       animation: room.vibe === "breaking" ? "breakingPulse 2s infinite" : "none",
                     }}>{rv.label}</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{room.title}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{room.title}</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                        {room.creator_name || "Unknown"} · {room.participant_count} joined
+                        {room.creator_name || "Unknown"}
+                        {room.is_live ? (
+                          <span style={{ marginLeft: 6 }}>
+                            <span style={{ color: "var(--success)" }}>{room.live_speakers} speaking</span>
+                            {room.live_listeners > 0 && (
+                              <span>, {room.live_listeners} listening</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span> · {room.participant_count} joined</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -318,7 +368,7 @@ export default function Dashboard() {
                     <span className="hide-mobile" style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{room.id}</span>
                     {room.created_by === user.uid && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(room.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(room.id); setDiscoveryRooms((prev) => prev.filter((r) => r.id !== room.id)); }}
                         style={{ background: "transparent", border: "none", color: "var(--danger)", padding: "4px 8px", fontSize: 12, opacity: 0.6 }}
                         onMouseOver={(e) => { e.currentTarget.style.opacity = "1"; }}
                         onMouseOut={(e) => { e.currentTarget.style.opacity = "0.6"; }}

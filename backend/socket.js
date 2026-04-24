@@ -42,6 +42,9 @@ const bannedUsers = {};
 // Track room creators: { roomId: userId }
 const roomCreators = {};
 
+// Track room floor mode: { roomId: "moderated"|"open" }
+const roomFloorMode = {};
+
 // Track debate round timers: { roomId: timeoutId }
 const debateTimers = {};
 
@@ -54,7 +57,7 @@ function setupSocket(io) {
      * We add them to the room's participant list and notify all
      * existing participants so they can initiate peer connections.
      */
-    socket.on("join-room", ({ roomId, userId, displayName, photoURL, createdBy }) => {
+    socket.on("join-room", ({ roomId, userId, displayName, photoURL, createdBy, role }) => {
       // Check if user is banned from this room
       if (bannedUsers[roomId] && bannedUsers[roomId].has(userId)) {
         socket.emit("join-denied", { reason: "banned" });
@@ -71,7 +74,10 @@ function setupSocket(io) {
         roomCreators[roomId] = createdBy;
       }
 
-      const user = { socketId: socket.id, userId, displayName, photoURL };
+      // Default floor mode to "open" if not set
+      if (!roomFloorMode[roomId]) roomFloorMode[roomId] = "open";
+
+      const user = { socketId: socket.id, userId, displayName, photoURL, role: role || "speaker" };
       rooms[roomId].push(user);
 
       // Store room info on socket for cleanup on disconnect
@@ -79,11 +85,15 @@ function setupSocket(io) {
       socket.userId = userId;
       socket.displayName = displayName;
       socket.photoURL = photoURL;
+      socket.role = role || "speaker";
 
       // Tell the joining user about everyone already in the room
       // so they can create peer connections to each existing user
       const existingUsers = rooms[roomId].filter((u) => u.socketId !== socket.id);
       socket.emit("existing-users", existingUsers);
+
+      // Send current floor mode
+      socket.emit("floor-mode", { mode: roomFloorMode[roomId] || "open" });
 
       // Tell everyone else in the room that a new user connected
       socket.to(roomId).emit("user-connected", user);
@@ -94,7 +104,7 @@ function setupSocket(io) {
         socket.emit("room-mode-change", { mode: "debate", session: debateSession });
       }
 
-      console.log(`${displayName} joined room ${roomId} (${rooms[roomId].length} users)`);
+      console.log(`${displayName} (${role || "speaker"}) joined room ${roomId} (${rooms[roomId].length} users)`);
     });
 
     /**
@@ -224,6 +234,7 @@ function setupSocket(io) {
         // Clean up empty rooms
         if (rooms[roomId].length === 0) {
           delete rooms[roomId];
+          delete roomFloorMode[roomId];
           // Also clean up debate state
           destroySession(roomId);
           if (debateTimers[roomId]) {
@@ -339,6 +350,37 @@ function setupSocket(io) {
       });
     });
 
+    // ─── Floor Mode & Speaker Promotion ─────────────────────
+    socket.on("set-floor-mode", ({ roomId, mode }) => {
+      if (roomCreators[roomId] !== socket.userId) return;
+      if (mode !== "open" && mode !== "moderated") return;
+      roomFloorMode[roomId] = mode;
+      io.to(roomId).emit("floor-mode", { mode });
+    });
+
+    socket.on("promote-to-speaker", ({ roomId, targetUserId }) => {
+      if (roomCreators[roomId] !== socket.userId) return;
+      const roomUsers = rooms[roomId] || [];
+      const target = roomUsers.find((u) => u.userId === targetUserId);
+      if (!target) return;
+      target.role = "speaker";
+      // Update socket-level role too
+      const targetSocket = io.sockets.sockets.get(target.socketId);
+      if (targetSocket) targetSocket.role = "speaker";
+      io.to(roomId).emit("role-changed", { userId: targetUserId, socketId: target.socketId, role: "speaker" });
+    });
+
+    socket.on("demote-to-listener", ({ roomId, targetUserId }) => {
+      if (roomCreators[roomId] !== socket.userId) return;
+      const roomUsers = rooms[roomId] || [];
+      const target = roomUsers.find((u) => u.userId === targetUserId);
+      if (!target) return;
+      target.role = "listener";
+      const targetSocket = io.sockets.sockets.get(target.socketId);
+      if (targetSocket) targetSocket.role = "listener";
+      io.to(roomId).emit("role-changed", { userId: targetUserId, socketId: target.socketId, role: "listener" });
+    });
+
     socket.on("debate-end", async ({ roomId }) => {
       if (roomCreators[roomId] !== socket.userId) {
         socket.emit("debate-error", { message: "Only the host can end the debate." });
@@ -441,4 +483,18 @@ function getActiveUserCount() {
   return count;
 }
 
-module.exports = { setupSocket, getActiveUserCount };
+function getRoomCounts() {
+  const counts = {};
+  for (const roomId in rooms) {
+    let speakers = 0;
+    let listeners = 0;
+    rooms[roomId].forEach((u) => {
+      if (u.role === "listener") listeners++;
+      else speakers++;
+    });
+    counts[roomId] = { speakers, listeners, total: rooms[roomId].length };
+  }
+  return counts;
+}
+
+module.exports = { setupSocket, getActiveUserCount, getRoomCounts };

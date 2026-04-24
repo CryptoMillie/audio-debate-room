@@ -606,6 +606,55 @@ input::placeholder {
   background: linear-gradient(to right, rgba(47, 158, 68, 0.3), rgba(47, 158, 68, 0.15));
 }
 
+/* Recording button active state */
+.media-btn.recording-active {
+  background: rgba(224, 49, 49, 0.15);
+  border-color: rgba(224, 49, 49, 0.4);
+  color: var(--danger);
+  animation: recordPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 49, 49, 0.3); }
+  50% { box-shadow: 0 0 12px 2px rgba(224, 49, 49, 0.2); }
+}
+
+/* LIVE badge for discovery feed */
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(224, 49, 49, 0.15);
+  color: var(--danger);
+  animation: livePulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.live-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: liveDot 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(224, 49, 49, 0.2); }
+  50% { box-shadow: 0 0 12px rgba(224, 49, 49, 0.4); }
+}
+
+@keyframes liveDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* Mode toggle pill */
 .mode-toggle {
   display: inline-flex;

@@ -68,3 +68,11 @@ export function getAvatar(userId) {
 export function getTurnCredentials() {
   return request("/turn-credentials");
 }
+
+export function listRoomsDiscovery(vibe, search) {
+  const params = new URLSearchParams();
+  if (vibe && vibe !== "all") params.set("vibe", vibe);
+  if (search) params.set("search", search);
+  const qs = params.toString();
+  return request(`/rooms-discovery${qs ? "?" + qs : ""}`);
+}
