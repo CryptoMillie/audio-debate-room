@@ -92,9 +92,9 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div className="container" style={{ textAlign: "center", marginTop: "min(160px, 20vh)", position: "relative" }}>
+      <div className="container" style={{ textAlign: "center", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "40px 24px" }}>
         {/* Graffiti scattered text */}
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
           {["LIVE", "UNMUTED", "RAW", "TRUTH", "NO CAP", "ON AIR"].map((word, i) => (
             <span key={word} style={{
               position: "absolute",
@@ -111,63 +111,68 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <h1 style={{ fontSize: "clamp(48px, 14vw, 72px)", fontWeight: 900, letterSpacing: "-3px", marginBottom: 14, color: "#fff", textShadow: "0 0 30px rgba(250, 204, 21, 0.45), 0 0 60px rgba(250, 204, 21, 0.2)" }}>
-          Backchannel
-        </h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: 20, fontSize: "clamp(15px, 4vw, 18px)", fontWeight: 500 }}>
-          Drop in. Speak up. No recordings.
-        </p>
-
-        {/* Equalizer bars */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 40, height: 28, alignItems: "flex-end" }}>
-          {[0.6, 1.0, 0.4, 0.8, 0.5].map((delay, i) => (
-            <div key={i} style={{
-              width: 3,
-              height: 24,
-              background: "var(--primary)",
-              borderRadius: 2,
-              opacity: 0.5,
-              animation: `eqBar ${1.2 + delay * 0.4}s ease-in-out infinite`,
-              animationDelay: `${delay * 0.3}s`,
-              transformOrigin: "bottom",
-            }} />
-          ))}
-        </div>
-
-        {isInAppBrowser ? (
-          <div style={{ maxWidth: 340, margin: "0 auto" }}>
-            <p style={{ color: "#f59f00", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-              Open in your browser to sign in
-            </p>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-              Google sign-in doesn't work inside app browsers. Tap the menu (
-              <span style={{ fontWeight: 700 }}>...</span> or
-              <span style={{ fontWeight: 700 }}> share</span>) and choose
-              <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Safari"</span> or
-              <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Chrome"</span>.
-            </p>
-            <button
-              className="btn-primary"
-              onClick={() => {
-                // Try to force open in external browser
-                window.open(window.location.href, "_system");
-              }}
-              style={{ fontSize: 14, padding: "12px 32px", borderRadius: 8 }}
-            >
-              Try Opening in Browser
-            </button>
-          </div>
-        ) : (
-          <button className="btn-primary" onClick={login} style={{ fontSize: 16, padding: "16px 48px", borderRadius: 10 }}>
-            Sign in with Google
-          </button>
-        )}
-
-        {activeUsers > 0 && (
-          <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 24 }}>
-            <span style={{ color: "var(--success)", fontWeight: 600 }}>{activeUsers}</span> people talking right now
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <h1 style={{ fontSize: "clamp(52px, 16vw, 80px)", fontWeight: 900, letterSpacing: "-3px", marginBottom: 20, color: "#fff", textShadow: "0 0 30px rgba(250, 204, 21, 0.45), 0 0 60px rgba(250, 204, 21, 0.2), 0 2px 4px rgba(0,0,0,0.5)" }}>
+            Backchannel
+          </h1>
+          <p style={{ color: "var(--text-muted)", marginBottom: 32, fontSize: "clamp(16px, 4.5vw, 20px)", fontWeight: 500, letterSpacing: "0.02em" }}>
+            Drop in. Speak up. No recordings.
           </p>
-        )}
+
+          {/* Equalizer waveform */}
+          <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 48, height: 40, alignItems: "center" }}>
+            {[0.3, 0.7, 0.5, 1.0, 0.4, 0.8, 0.6, 1.0, 0.3, 0.9, 0.5, 0.7, 0.4, 0.8, 0.6, 0.3, 0.9, 0.5, 0.7, 0.4].map((delay, i) => (
+              <div key={i} style={{
+                width: 2.5,
+                height: `${12 + Math.sin(i * 0.8) * 12 + 8}px`,
+                background: `rgba(59, 91, 219, ${0.3 + Math.sin(i * 0.6) * 0.2})`,
+                borderRadius: 2,
+                animation: `eqBar ${1.0 + delay * 0.5}s ease-in-out infinite`,
+                animationDelay: `${delay * 0.25}s`,
+                transformOrigin: "center",
+              }} />
+            ))}
+          </div>
+
+          {isInAppBrowser ? (
+            <div style={{ maxWidth: 380, margin: "0 auto" }}>
+              <p style={{ color: "#f59f00", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>
+                Open in your browser to sign in
+              </p>
+              <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+                Google sign-in doesn't work inside app browsers. Tap the menu (
+                <span style={{ fontWeight: 700 }}>...</span> or
+                <span style={{ fontWeight: 700 }}> share</span>) and choose
+                <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Safari"</span> or
+                <span style={{ color: "#fff", fontWeight: 600 }}> "Open in Chrome"</span>.
+              </p>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  window.open(window.location.href, "_system");
+                }}
+                style={{ fontSize: 15, padding: "14px 40px", borderRadius: 10 }}
+              >
+                Try Opening in Browser
+              </button>
+            </div>
+          ) : (
+            <button className="btn-primary" onClick={login} style={{
+              fontSize: 16, padding: "18px 56px", borderRadius: 12,
+              background: "linear-gradient(135deg, #3b5bdb 0%, #4c6ef5 100%)",
+              boxShadow: "0 0 20px rgba(59, 91, 219, 0.3), 0 4px 20px rgba(0,0,0,0.3)",
+              transition: "all 0.3s",
+            }}>
+              Sign in with Google
+            </button>
+          )}
+
+          {activeUsers > 0 && (
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 32 }}>
+              <span style={{ color: "var(--success)", fontWeight: 600 }}>{activeUsers}</span> people talking right now
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -211,8 +216,8 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: "clamp(28px, 6vw, 38px)", fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", textShadow: "0 0 20px rgba(250, 204, 21, 0.4), 0 0 40px rgba(250, 204, 21, 0.15)" }}>Backchannel</h1>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, paddingTop: 12, flexWrap: "wrap", gap: 12 }}>
+        <h1 style={{ fontSize: "clamp(28px, 7vw, 40px)", fontWeight: 900, color: "#fff", letterSpacing: "-1.5px", textShadow: "0 0 20px rgba(250, 204, 21, 0.4), 0 0 40px rgba(250, 204, 21, 0.15)" }}>Backchannel</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             onClick={() => { setProfileName(user.displayName || ""); setProfilePhoto(user.photoURL || ""); setShowProfile(true); }}

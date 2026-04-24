@@ -830,7 +830,7 @@ export default function RoomPage() {
   return (
     <div className={`container${roomMode === "debate" && debateSession?.status === "active" ? " debate-active" : ""}`}>
       {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, paddingTop: 12, flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
             <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: "0.04em", textShadow: "0 0 16px rgba(250, 204, 21, 0.4), 0 0 32px rgba(250, 204, 21, 0.15)" }}>BACKCHANNEL</span>
