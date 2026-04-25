@@ -9,10 +9,11 @@ const { getDb } = require("./db");
 const app = express();
 const server = http.createServer(app);
 
-// Allow local dev + production frontend
+// Allow local dev + production frontend(s)
+// FRONTEND_URL can be a single URL or comma-separated list
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
-  process.env.FRONTEND_URL, // Set this on Railway to your Vercel URL
+  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(u => u.trim()) : []),
 ].filter(Boolean);
 
 const io = new Server(server, {
