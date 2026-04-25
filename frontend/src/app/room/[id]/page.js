@@ -112,6 +112,7 @@ export default function RoomPage() {
   const [remoteVideos, setRemoteVideos] = useState({}); // { socketId: MediaStream }
   const [selfVideoStream, setSelfVideoStream] = useState(null);
   const [screenShareInfo, setScreenShareInfo] = useState(null); // { socketId, displayName, stream }
+  const [micVolume, setMicVolume] = useState(1.0);
   const [mediaVolume, setMediaVolume] = useState(0.5);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -126,6 +127,7 @@ export default function RoomPage() {
   const animFrameRef = useRef(null);
   const chatEndRef = useRef(null);
   const iceServersRef = useRef(null);
+  const gainNodeRef = useRef(null);
   const mediaVolumeRef = useRef(0.5);
   const mediaRecorderRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -153,8 +155,14 @@ export default function RoomPage() {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
+      // Also stop raw mic hardware tracks
+      if (streamRef.rawMic) {
+        streamRef.rawMic.getTracks().forEach((t) => t.stop());
+        streamRef.rawMic = null;
+      }
       streamRef.current = null;
     }
+    gainNodeRef.current = null;
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach((t) => t.stop());
       videoStreamRef.current = null;
@@ -375,13 +383,22 @@ export default function RoomPage() {
         stream = silentDest.stream;
         streamRef.current = stream;
       } else {
-        // Speaker — use raw mic stream directly to preserve browser echo cancellation
+        // Speaker — get mic and route through GainNode for volume control
         const rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: false,
         });
-        stream = rawMicStream;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(rawMicStream);
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = micVolume;
+        gainNodeRef.current = gainNode;
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(gainNode);
+        gainNode.connect(dest);
+        stream = dest.stream;
         streamRef.current = stream;
+        streamRef.rawMic = rawMicStream;
         startSpeakingDetection(rawMicStream);
       }
 
@@ -569,6 +586,13 @@ export default function RoomPage() {
     }
   }, [joinRole]);
 
+  // Sync mic gain when slider changes
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = micVolume;
+    }
+  }, [micVolume]);
+
   // Sync all remote audio elements when media volume changes
   useEffect(() => {
     mediaVolumeRef.current = mediaVolume;
@@ -723,8 +747,8 @@ export default function RoomPage() {
       recordingCtxRef.current = mixCtx;
 
       // Mix own mic
-      if (streamRef.current) {
-        const micSource = mixCtx.createMediaStreamSource(streamRef.current);
+      if (streamRef.rawMic) {
+        const micSource = mixCtx.createMediaStreamSource(streamRef.rawMic);
         micSource.connect(dest);
       }
 
@@ -929,9 +953,22 @@ export default function RoomPage() {
             </div>
             {/* Volume Sliders */}
             <div className="volume-controls">
+              {joinRole !== "listener" && (
+                <div className="volume-row">
+                  <MicOnIcon />
+                  <span className="volume-label">Mic</span>
+                  <input
+                    type="range" min="0" max="1" step="0.01"
+                    value={micVolume}
+                    onChange={(e) => setMicVolume(parseFloat(e.target.value))}
+                    className="volume-slider mic-slider"
+                  />
+                  <span className="volume-value">{Math.round(micVolume * 100)}%</span>
+                </div>
+              )}
               <div className="volume-row">
                 <SpeakerIcon />
-                <span className="volume-label">Volume</span>
+                <span className="volume-label">Media</span>
                 <input
                   type="range" min="0" max="1" step="0.01"
                   value={mediaVolume}
