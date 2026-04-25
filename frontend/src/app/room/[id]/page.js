@@ -127,7 +127,7 @@ export default function RoomPage() {
   const animFrameRef = useRef(null);
   const chatEndRef = useRef(null);
   const iceServersRef = useRef(null);
-  const gainNodeRef = useRef(null);
+  const micVolumeRef = useRef(1.0);
   const mediaVolumeRef = useRef(1.0);
   const mediaRecorderRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -155,14 +155,8 @@ export default function RoomPage() {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
-      // Also stop raw mic hardware tracks
-      if (streamRef.rawMic) {
-        streamRef.rawMic.getTracks().forEach((t) => t.stop());
-        streamRef.rawMic = null;
-      }
       streamRef.current = null;
     }
-    gainNodeRef.current = null;
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach((t) => t.stop());
       videoStreamRef.current = null;
@@ -251,10 +245,12 @@ export default function RoomPage() {
         const audioElId = `audio-${targetSocketId}-${remoteStream.id}`;
         const existing = document.getElementById(audioElId);
         if (!existing) {
+          const audioType = hasVideo ? "screenshare" : "mic";
           const audio = document.createElement("audio");
           audio.id = audioElId;
           audio.setAttribute("playsinline", "");
-          audio.volume = mediaVolumeRef.current;
+          audio.setAttribute("data-audio-type", audioType);
+          audio.volume = audioType === "screenshare" ? mediaVolumeRef.current : micVolumeRef.current;
           document.body.appendChild(audio);
           audio.srcObject = remoteStream;
 
@@ -383,22 +379,13 @@ export default function RoomPage() {
         stream = silentDest.stream;
         streamRef.current = stream;
       } else {
-        // Speaker — get mic and route through GainNode for volume control
+        // Speaker — use raw mic stream to preserve browser echo cancellation
         const rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
           video: false,
         });
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaStreamSource(rawMicStream);
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = micVolume;
-        gainNodeRef.current = gainNode;
-        const dest = audioCtx.createMediaStreamDestination();
-        source.connect(gainNode);
-        gainNode.connect(dest);
-        stream = dest.stream;
+        stream = rawMicStream;
         streamRef.current = stream;
-        streamRef.rawMic = rawMicStream;
         startSpeakingDetection(rawMicStream);
       }
 
@@ -586,17 +573,18 @@ export default function RoomPage() {
     }
   }, [joinRole]);
 
-  // Sync mic gain when slider changes
+  // Sync voice volume — controls how loud you hear other users' mics
   useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = micVolume;
-    }
+    micVolumeRef.current = micVolume;
+    document.querySelectorAll('[data-audio-type="mic"]').forEach((el) => {
+      el.volume = micVolume;
+    });
   }, [micVolume]);
 
-  // Sync all remote audio elements when media volume changes
+  // Sync media volume — controls screen share audio only
   useEffect(() => {
     mediaVolumeRef.current = mediaVolume;
-    document.querySelectorAll('[id^="audio-"]').forEach((el) => {
+    document.querySelectorAll('[data-audio-type="screenshare"]').forEach((el) => {
       el.volume = mediaVolume;
     });
   }, [mediaVolume]);
@@ -747,8 +735,8 @@ export default function RoomPage() {
       recordingCtxRef.current = mixCtx;
 
       // Mix own mic
-      if (streamRef.rawMic) {
-        const micSource = mixCtx.createMediaStreamSource(streamRef.rawMic);
+      if (streamRef.current) {
+        const micSource = mixCtx.createMediaStreamSource(streamRef.current);
         micSource.connect(dest);
       }
 
@@ -953,21 +941,19 @@ export default function RoomPage() {
             </div>
             {/* Volume Sliders */}
             <div className="volume-controls">
-              {joinRole !== "listener" && (
-                <div className="volume-row">
-                  <MicOnIcon />
-                  <span className="volume-label">Mic</span>
-                  <input
-                    type="range" min="0" max="1" step="0.01"
-                    value={micVolume}
-                    onChange={(e) => setMicVolume(parseFloat(e.target.value))}
-                    className="volume-slider mic-slider"
-                  />
-                  <span className="volume-value">{Math.round(micVolume * 100)}%</span>
-                </div>
-              )}
               <div className="volume-row">
-                <SpeakerIcon />
+                <MicOnIcon />
+                <span className="volume-label">Voices</span>
+                <input
+                  type="range" min="0" max="1" step="0.01"
+                  value={micVolume}
+                  onChange={(e) => setMicVolume(parseFloat(e.target.value))}
+                  className="volume-slider mic-slider"
+                />
+                <span className="volume-value">{Math.round(micVolume * 100)}%</span>
+              </div>
+              <div className="volume-row">
+                <ScreenIcon />
                 <span className="volume-label">Media</span>
                 <input
                   type="range" min="0" max="1" step="0.01"
