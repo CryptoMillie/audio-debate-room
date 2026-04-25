@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, signInWithGoogle, logOut, updateUserProfile } from "./firebase";
+import { auth, signInWithGoogle, logOut, updateUserProfile, handleRedirectResult } from "./firebase";
 import { syncUser, updateAvatar, getAvatar } from "./api";
 
 const AuthContext = createContext(null);
@@ -12,6 +12,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Complete redirect sign-in if user was redirected back from Google
+    handleRedirectResult().catch(() => {});
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Sync user to our backend database
