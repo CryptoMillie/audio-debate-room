@@ -54,7 +54,10 @@ export function AuthProvider({ children }) {
     setLoginError(null);
     try {
       const firebaseUser = await signInWithGoogle();
-      if (firebaseUser) await syncUser(firebaseUser);
+      // signInWithRedirect won't return (page navigates away), so firebaseUser is null
+      if (firebaseUser) {
+        syncUser(firebaseUser).catch(() => {}); // best-effort, don't block login
+      }
     } catch (e) {
       console.error("Login failed:", e);
       if (e.code === "auth/unauthorized-domain") {
