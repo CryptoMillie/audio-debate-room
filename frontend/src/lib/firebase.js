@@ -16,29 +16,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-function isMobile() {
-  if (typeof navigator === "undefined") return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
 export async function signInWithGoogle() {
-  // On mobile, use redirect directly — popups are unreliable
-  if (isMobile()) {
-    await signInWithRedirect(auth, googleProvider);
-    return null;
-  }
-
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (err) {
-    // Any popup failure on desktop → fall back to redirect
-    if (
-      err.code === "auth/popup-blocked" ||
-      err.code === "auth/popup-closed-by-user" ||
-      err.code === "auth/cancelled-popup-request" ||
-      err.code === "auth/operation-not-supported-in-this-environment"
-    ) {
+    // If popup blocked, fall back to redirect
+    if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
       await signInWithRedirect(auth, googleProvider);
       return null;
     }
@@ -47,15 +31,9 @@ export async function signInWithGoogle() {
   }
 }
 
-// Must be called on page load to complete redirect sign-in flow
 export async function handleRedirectResult() {
-  try {
-    const result = await getRedirectResult(auth);
-    return result?.user || null;
-  } catch (err) {
-    console.error("Redirect result error:", err.code, err.message);
-    return null;
-  }
+  const result = await getRedirectResult(auth);
+  return result?.user || null;
 }
 
 export async function logOut() {
