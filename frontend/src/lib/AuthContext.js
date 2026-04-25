@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, signInWithGoogle, logOut, updateUserProfile } from "./firebase";
+import { auth, signInWithGoogle, logOut, updateUserProfile, handleRedirectResult } from "./firebase";
 import { syncUser, updateAvatar, getAvatar } from "./api";
 
 const AuthContext = createContext(null);
@@ -10,8 +10,15 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loginError, setLoginError] = useState(null);
 
   useEffect(() => {
+    // Process redirect result on mount (completes mobile sign-in flow)
+    handleRedirectResult().catch((err) => {
+      console.error("Redirect result error:", err);
+      setLoginError("Sign-in failed. Make sure this domain is authorized in Firebase.");
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Sync user to our backend database
@@ -44,11 +51,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async () => {
+    setLoginError(null);
     try {
       const firebaseUser = await signInWithGoogle();
       if (firebaseUser) await syncUser(firebaseUser);
     } catch (e) {
       console.error("Login failed:", e);
+      if (e.code === "auth/unauthorized-domain") {
+        setLoginError("This domain is not authorized for sign-in. Contact the admin.");
+      } else {
+        setLoginError("Sign-in failed. Please try again.");
+      }
     }
   };
 
@@ -67,7 +80,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, editProfile, changeAvatar }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, editProfile, changeAvatar, loginError }}>
       {children}
     </AuthContext.Provider>
   );

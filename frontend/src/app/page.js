@@ -37,7 +37,7 @@ function resizeImage(file, size) {
 }
 
 export default function Dashboard() {
-  const { user, loading, login, logout, editProfile, changeAvatar } = useAuth();
+  const { user, loading, login, logout, editProfile, changeAvatar, loginError } = useAuth();
   const [title, setTitle] = useState("");
   const [vibe, setVibe] = useState("chill");
   const [joinId, setJoinId] = useState("");
@@ -51,6 +51,8 @@ export default function Dashboard() {
   const [vibeFilter, setVibeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -153,6 +155,10 @@ export default function Dashboard() {
             </button>
           )}
 
+          {loginError && (
+            <p style={{ color: "var(--danger)", fontSize: 14, marginTop: 20, fontWeight: 500 }}>{loginError}</p>
+          )}
+
           {activeUsers > 0 && (
             <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 32 }}>
               <span style={{ color: "var(--success)", fontWeight: 600 }}>{activeUsers}</span> people talking right now
@@ -166,8 +172,16 @@ export default function Dashboard() {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
-    const { roomId } = await createRoom(title.trim(), user.uid, vibe);
-    router.push(`/room/${roomId}`);
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const { roomId } = await createRoom(title.trim(), user.uid, vibe);
+      router.push(`/room/${roomId}`);
+    } catch (err) {
+      console.error("Create room failed:", err);
+      setCreateError(err.message || "Failed to create room. Try again.");
+      setCreating(false);
+    }
   };
 
   const handleJoin = (e) => {
@@ -260,7 +274,12 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
-            <button className="btn-primary" type="submit">Create</button>
+            <button className="btn-primary" type="submit" disabled={creating} style={{ opacity: creating ? 0.6 : 1 }}>
+              {creating ? "Creating..." : "Create"}
+            </button>
+            {createError && (
+              <p style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>{createError}</p>
+            )}
           </form>
         </div>
 
