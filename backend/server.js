@@ -16,14 +16,17 @@ const ALLOWED_ORIGINS = [
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(u => u.trim()) : []),
 ].filter(Boolean);
 
+console.log("Allowed origins:", ALLOWED_ORIGINS);
+
 const io = new Server(server, {
   cors: {
     origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
-app.use(cors({ origin: ALLOWED_ORIGINS }));
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 // REST API routes
