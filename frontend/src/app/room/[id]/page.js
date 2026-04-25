@@ -113,7 +113,7 @@ export default function RoomPage() {
   const [selfVideoStream, setSelfVideoStream] = useState(null);
   const [screenShareInfo, setScreenShareInfo] = useState(null); // { socketId, displayName, stream }
   const [micVolume, setMicVolume] = useState(1.0);
-  const [mediaVolume, setMediaVolume] = useState(0.5);
+  const [mediaVolume, setMediaVolume] = useState(1.0);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [joinRole, setJoinRole] = useState(null); // null | "speaker" | "listener"
@@ -128,7 +128,7 @@ export default function RoomPage() {
   const chatEndRef = useRef(null);
   const iceServersRef = useRef(null);
   const gainNodeRef = useRef(null);
-  const mediaVolumeRef = useRef(0.5);
+  const mediaVolumeRef = useRef(1.0);
   const mediaRecorderRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
@@ -385,7 +385,7 @@ export default function RoomPage() {
       } else {
         // Speaker — get mic and route through GainNode for volume control
         const rawMicStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
           video: false,
         });
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
