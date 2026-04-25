@@ -21,13 +21,10 @@ export async function signInWithGoogle() {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (err) {
-    // If popup blocked, fall back to redirect
-    if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
-      await signInWithRedirect(auth, googleProvider);
-      return null;
-    }
-    console.error("Sign-in error:", err.code, err.message);
-    throw err;
+    // If popup fails for any reason (blocked, in-app browser, etc.), fall back to redirect
+    console.log("Popup sign-in failed, trying redirect:", err.code);
+    await signInWithRedirect(auth, googleProvider);
+    return null;
   }
 }
 
